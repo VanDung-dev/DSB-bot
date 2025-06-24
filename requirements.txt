@@ -3,9 +3,6 @@ colorlog
 python-dotenv
 google-generativeai
 duckduckgo-search
-rule34Py
 yt-dlp
 requests
 PyNaCl
-pytest
-pytest-asyncio
