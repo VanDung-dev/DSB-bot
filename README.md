@@ -120,19 +120,10 @@ python main.py
 
 ---
 
-## ⚠️ Lưu ý vận hành
-
-* **Không commit** `.env`, `cookies.txt` hoặc file chứa thông tin nhạy cảm.
-* **NSFW filter**: Xóa `rule34Py` nếu không dùng.
-* **bad\_words.json**: Cần chỉnh sửa cẩn thận tránh block từ không cần thiết.
-
----
-
 ## 💡 Kế hoạch phát triển (Roadmap)
 
 * [ ] Slash Commands (`/play`, `/ai`, v.v.)
 * [ ] Giao diện chào mừng tùy chỉnh
-* [ ] Lưu lịch sử tương tác AI
 * [ ] Hệ thống phân quyền nâng cao
 
 ---
