@@ -103,6 +103,7 @@ class Help(commands.Cog):
             name="Lệnh",
             value=(
                 "`!image <từ khóa>` hoặc `!img` - Tìm ảnh từ DuckDuckGo\n"
+                "`!meme <từ khóa>` - Tìm ảnh meme từ DuckDuckGo\n"
             ),
             inline=False,
         )
