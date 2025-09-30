@@ -52,7 +52,7 @@
 ```bash
 git clone <URL-repository-của-bạn>
 cd <tên-thư-mục>
-````
+```
 
 ### 2. Tạo môi trường ảo
 
@@ -81,6 +81,39 @@ GEMINI_API_KEY=<your_gemini_api_key>
 
 ```bash
 python main.py
+```
+
+---
+
+## 🐳 Chạy với Docker
+
+### 1. Tạo file `.env` từ mẫu
+
+```bash
+cp .env.example .env
+```
+
+### 2. Chỉnh sửa file `.env` với token và API key của bạn
+
+```env
+KEY_DISCORD=your_actual_discord_bot_token
+GEMINI_API_KEY=your_actual_gemini_api_key
+```
+
+### 3. Build và chạy container
+
+```bash
+docker-compose up --build
+```
+
+### Hoặc build và chạy trực tiếp với Docker
+
+```bash
+# Build image
+docker build -t dsb-bot .
+
+# Run container
+docker run --env-file .env dsb-bot
 ```
 
 ---
@@ -140,5 +173,3 @@ python main.py
 
 Dự án sử dụng giấy phép **MIT License**.
 Chi tiết: [LICENSE](./LICENSE)
-
-
