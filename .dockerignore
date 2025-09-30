@@ -1,0 +1,38 @@
+# Git files
+.git
+.gitignore
+
+# Python cache and compiled files
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env.example/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Replit files
+replit.nix
+
+# Docker files (prevent recursive copying)
+Dockerfile
+.dockerignore
