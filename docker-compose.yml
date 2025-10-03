@@ -7,6 +7,8 @@ services:
     environment:
       - KEY_DISCORD=${KEY_DISCORD}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
