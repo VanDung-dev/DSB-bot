@@ -1,9 +1,10 @@
 import logging
 import random
+import time
 
 import discord
 from discord.ext import commands
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
@@ -32,8 +33,22 @@ class ImageSearch(commands.Cog):
         search_msg = await ctx.send(f"🔍 Đang tìm ảnh cho: **{query}**...")
 
         try:
+            # Add a delay to help with rate limiting
+            time.sleep(1)
             with DDGS() as ddgs:
-                results = list(ddgs.images(query, max_results=10))
+                results = []
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        results = list(ddgs.images(query, max_results=10))
+                        break
+                    except Exception as e:
+                        if "403" in str(e) or "Ratelimit" in str(e):
+                            if attempt < retries - 1:  # Not the last attempt
+                                time.sleep(2 ** attempt)  # Exponential backoff
+                                continue
+                        raise e
+                
                 if not results:
                     await search_msg.edit(content="❌ Không tìm thấy ảnh nào.")
                     logger.warning(f"⚠️ Không tìm thấy ảnh cho truy vấn: {query}")
@@ -70,8 +85,22 @@ class ImageSearch(commands.Cog):
         search_msg = await ctx.send(f"🔍 Đang tìm meme cho: **{query}**...")
 
         try:
+            # Add a delay to help with rate limiting
+            time.sleep(1)
             with DDGS() as ddgs:
-                results = list(ddgs.images(query, max_results=10))
+                results = []
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        results = list(ddgs.images(query, max_results=10))
+                        break
+                    except Exception as e:
+                        if "403" in str(e) or "Ratelimit" in str(e):
+                            if attempt < retries - 1:  # Not the last attempt
+                                time.sleep(2 ** attempt)  # Exponential backoff
+                                continue
+                        raise e
+
                 if not results:
                     await search_msg.edit(content="❌ Không tìm thấy meme nào.")
                     logger.warning(f"⚠️ Không tìm thấy meme cho truy vấn: {query}")

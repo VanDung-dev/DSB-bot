@@ -2,7 +2,7 @@ discord.py
 colorlog
 python-dotenv
 google-generativeai
-duckduckgo-search
+ddgs
 yt-dlp
 requests
 PyNaCl
