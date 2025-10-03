@@ -7,10 +7,18 @@ from typing import Dict, Optional
 
 import discord
 import yt_dlp
+import os
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+from dotenv import load_dotenv
 from discord.ext import commands
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
+
+
+def is_spotify_url(url: str) -> bool:
+    return "open.spotify.com" in url
 
 
 class MusicSearch(commands.Cog):
@@ -36,6 +44,19 @@ class MusicSearch(commands.Cog):
         self.voice_clients: Dict[int, discord.VoiceClient] = {}
         self.ydl_options = self.load_ydl_config()
 
+        load_dotenv()
+        client_id = os.getenv("SPOTIFY_CLIENT_ID")
+        client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+        self.sp = None
+        if client_id and client_secret:
+            self.sp = spotipy.Spotify(
+                auth_manager=SpotifyClientCredentials(
+                    client_id=client_id,
+                    client_secret=client_secret
+                )
+            )
+
     @staticmethod
     def load_ydl_config() -> dict:
         """Tải cấu hình yt_dlp từ file JSON.
@@ -59,6 +80,36 @@ class MusicSearch(commands.Cog):
         except Exception as e:
             logger.error(f"❌ Lỗi khi tải ydl_config.json: {e}")
             raise
+
+    @staticmethod
+    def is_spotify_url(url: str) -> bool:
+        return "open.spotify.com" in url
+
+    def get_spotify_queries(self, url: str) -> list[str]:
+        """Trả về danh sách query nhạc từ Spotify (track/album/playlist)."""
+        if not self.sp:
+            return []
+
+        queries = []
+        try:
+            if "track" in url:
+                track = self.sp.track(url)
+                queries.append(f"{track['name']} {track['artists'][0]['name']}")
+            elif "album" in url:
+                album_id = url.split("/")[-1].split("?")[0]
+                tracks = self.sp.album_tracks(album_id)
+                for t in tracks["items"]:
+                    queries.append(f"{t['name']} {t['artists'][0]['name']}")
+            elif "playlist" in url:
+                playlist_id = url.split("/")[-1].split("?")[0]
+                tracks = self.sp.playlist_tracks(playlist_id)
+                for item in tracks["items"]:
+                    t = item["track"]
+                    queries.append(f"{t['name']} {t['artists'][0]['name']}")
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi lấy dữ liệu Spotify: {e}")
+
+        return queries
 
     async def get_video_info(self, query: str) -> Optional[dict]:
         """Lấy thông tin video từ YouTube.
@@ -133,12 +184,6 @@ class MusicSearch(commands.Cog):
 
     @commands.command(name="play", aliases=["p"])
     async def play(self, ctx: commands.Context, *, query: str) -> None:
-        """Phát nhạc từ URL hoặc tìm kiếm trên YouTube.
-
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-            query: URL hoặc từ khóa tìm kiếm.
-        """
         if not ctx.author.voice:
             await ctx.send("❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
             return
@@ -157,6 +202,36 @@ class MusicSearch(commands.Cog):
                 await ctx.send("❌ Lỗi khi kết nối voice channel.")
                 return
 
+        # Kiểm tra nếu là link Spotify
+        if self.is_spotify_url(query):
+            queries = self.get_spotify_queries(query)
+            if not queries:
+                await ctx.send("❌ Không lấy được nhạc từ Spotify.")
+                return
+
+            first = True
+            for q in queries:
+                video_info = await self.get_video_info(q)
+                if not video_info:
+                    continue
+
+                if guild_id not in self.queues:
+                    self.queues[guild_id] = deque()
+                self.queues[guild_id].append(video_info)
+
+                if first:
+                    embed = discord.Embed(
+                        title="🎵 Đang phát từ Spotify",
+                        description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                        color=discord.Color.green(),
+                    )
+                    await ctx.send(embed=embed)
+                    if guild_id not in self.now_playing:
+                        await self.play_next(guild_id)
+                    first = False
+            return
+
+        # Nếu không phải Spotify → xử lý như cũ (YouTube)
         search_msg = await ctx.send(f"🔍 Đang tìm: **{query}**...")
         video_info = await self.get_video_info(query)
         if not video_info:
@@ -169,11 +244,7 @@ class MusicSearch(commands.Cog):
 
         embed = discord.Embed(
             title="✅ Đã thêm vào hàng đợi",
-            description=(
-                f"[{video_info['title']}]({video_info['webpage_url']})\n"
-                f"**Người tải lên**: {video_info['uploader']}\n"
-                f"**Thời lượng**: {video_info['duration']//60}:{video_info['duration']%60:02d}"
-            ),
+            description=f"[{video_info['title']}]({video_info['webpage_url']})",
             color=discord.Color.blue(),
         )
         await search_msg.edit(content="", embed=embed)
