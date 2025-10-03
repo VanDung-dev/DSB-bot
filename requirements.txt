@@ -6,3 +6,4 @@ duckduckgo-search
 yt-dlp
 requests
 PyNaCl
+spotipy
