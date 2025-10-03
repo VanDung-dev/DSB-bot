@@ -54,20 +54,17 @@ class Help(commands.Cog):
 
     @staticmethod
     def _music_help() -> discord.Embed:
-        """Tạo embed cho danh mục lệnh nhạc.
-
-        Returns:
-            Embed chứa thông tin lệnh nhạc.
-        """
+        """Tạo embed cho danh mục lệnh nhạc."""
         embed = discord.Embed(
             title="🎵 Lệnh nhạc",
-            description="Các lệnh để phát và quản lý nhạc từ YouTube.",
+            description="Các lệnh để phát và quản lý nhạc từ YouTube **hoặc Spotify**.",
             color=0x00FF88,
         )
         embed.add_field(
             name="Lệnh",
             value=(
                 "`!play <URL/tìm kiếm>` hoặc `!p` - Phát nhạc hoặc thêm vào hàng đợi\n"
+                "  • Hỗ trợ link **YouTube** và **Spotify** (track/album/playlist)\n"
                 "`!queue` hoặc `!q` - Xem danh sách hàng đợi\n"
                 "`!nowplaying` hoặc `!np` - Xem bài đang phát\n"
                 "`!skip` hoặc `!s` - Bỏ qua bài hiện tại\n"
@@ -82,7 +79,11 @@ class Help(commands.Cog):
         )
         embed.add_field(
             name="💡 Ghi chú",
-            value="Bạn cần ở trong **voice channel** để sử dụng các lệnh nhạc.",
+            value=(
+                "• Bạn cần ở trong **voice channel** để sử dụng các lệnh nhạc.\n"
+                "• Với album/playlist Spotify: bot sẽ phát ngay bài đầu tiên, "
+                "các bài còn lại được thêm vào hàng đợi im lặng (không spam chat)."
+            ),
             inline=False,
         )
         return embed
@@ -222,7 +223,7 @@ class Help(commands.Cog):
             color=0x00FF88,
         )
         embed.add_field(name="📋 Lệnh cơ bản", value="Gõ `!help basic`", inline=False)
-        embed.add_field(name="🎵 Lệnh nhạc", value="Gõ `!help music`", inline=False)
+        embed.add_field(name="🎵 Lệnh nhạc", value="Gõ `!help music` (YouTube + Spotify)", inline=False)
         embed.add_field(name="🖼️ Lệnh tìm kiếm ảnh", value="Gõ `!help image`", inline=False)
         embed.add_field(name="🤖 Lệnh AI", value="Gõ `!help ai`", inline=False)
         embed.add_field(name="🚨 Lệnh kiểm duyệt", value="Gõ `!help moderation`", inline=False)
