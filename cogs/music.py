@@ -17,7 +17,10 @@ class MusicSearch(commands.Cog):
     """Cog xử lý các lệnh phát nhạc từ YouTube."""
 
     FFMPEG_OPTIONS = {
-        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "before_options": (
+            "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+            "-headers 'User-Agent: Mozilla/5.0'"
+        ),
         "options": "-vn",
     }
 
@@ -67,14 +70,22 @@ class MusicSearch(commands.Cog):
             Thông tin video (title, url, webpage_url, duration, uploader) hoặc None nếu lỗi.
         """
         try:
-            with yt_dlp.YoutubeDL(self.ydl_options) as ydl:
+            # ép buộc không simulate
+            ydl_opts = self.ydl_options.copy()
+            ydl_opts.pop("simulate", None)
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 loop = asyncio.get_event_loop()
                 info = await loop.run_in_executor(None, lambda: ydl.extract_info(query, download=False))
                 if "entries" in info:
                     info = info["entries"][0]
+
+                # lấy stream URL chuẩn (direct link cho ffmpeg)
+                stream_url = info.get("url")
+
                 return {
                     "title": info.get("title", "Unknown Title"),
-                    "url": info.get("url", ""),
+                    "url": stream_url,
                     "webpage_url": info.get("webpage_url", ""),
                     "duration": info.get("duration", 0),
                     "uploader": info.get("uploader", "Unknown Uploader"),
