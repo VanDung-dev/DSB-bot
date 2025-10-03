@@ -73,6 +73,8 @@ pip install -r requirements.txt
 ```env
 KEY_DISCORD=<your_discord_bot_token>
 GEMINI_API_KEY=<your_gemini_api_key>
+SPOTIFY_CLIENT_ID=<your_spotify_client_id>
+SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
 ```
 
 > Có thể sao chép từ `.env.example` nếu có.
@@ -98,6 +100,8 @@ cp .env.example .env
 ```env
 KEY_DISCORD=your_actual_discord_bot_token
 GEMINI_API_KEY=your_actual_gemini_api_key
+SPOTIFY_CLIENT_ID=<your_spotify_client_id>
+SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
 ```
 
 ### 3. Build và chạy container
