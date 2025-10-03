@@ -17,13 +17,13 @@ Phản hồi phải thân thiện, chính xác, ngắn gọn, và văn minh.
 
 - **Trợ lý AI:** Trò chuyện, giải đáp, hỗ trợ học tập.
 - **Quản lý server:** Kiểm duyệt từ cấm, chào mừng/tạm biệt.
-- **Công cụ giải trí:** Phát nhạc YouTube, tìm ảnh/video.
+- **Công cụ giải trí:** Phát nhạc YouTube, Spotify, tìm ảnh/video.
 
 ---
 
 ## 🔧 Danh sách lệnh chính
 
-### 🎵 Âm nhạc (YouTube)
+### 🎵 Âm nhạc (YouTube + Spotify)
 - `!play <url/từ khóa>`, `!p`: Phát nhạc hoặc thêm hàng đợi  
 - `!queue`, `!q`: Xem hàng đợi  
 - `!nowplaying`, `!np`: Bài đang phát  
