@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 # Cấu hình logger
@@ -28,6 +29,14 @@ class Help(commands.Cog):
         logger.info(f"{ctx.author} gọi lệnh !hello trong kênh {ctx.channel}")
         await ctx.send(
             f"Chào {ctx.author.mention}, tôi là DSB Bot! Gõ `!help` để xem các lệnh nhé! 😄"
+        )
+
+    @app_commands.command(name="hello", description="Chào hỏi với bot")
+    async def slash_hello(self, interaction: discord.Interaction) -> None:
+        """Phiên bản lệnh chém của Hello."""
+        logger.info(f"{interaction.user} gọi lệnh /hello trong kênh {interaction.channel}")
+        await interaction.response.send_message(
+            f"Chào {interaction.user.mention}, tôi là DSB Bot! Hãy dùng `/help` để xem các lệnh nhé! 😄"
         )
 
     @staticmethod
@@ -57,14 +66,13 @@ class Help(commands.Cog):
         """Tạo embed cho danh mục lệnh nhạc."""
         embed = discord.Embed(
             title="🎵 Lệnh nhạc",
-            description="Các lệnh để phát và quản lý nhạc từ YouTube **hoặc Spotify**.",
+            description="Các lệnh để phát và quản lý nhạc từ **YouTube** hoặc **Spotify**.",
             color=0x00FF88,
         )
         embed.add_field(
             name="Lệnh",
             value=(
                 "`!play <URL/tìm kiếm>` hoặc `!p` - Phát nhạc hoặc thêm vào hàng đợi\n"
-                "  • Hỗ trợ link **YouTube** và **Spotify** (track/album/playlist)\n"
                 "`!queue` hoặc `!q` - Xem danh sách hàng đợi\n"
                 "`!nowplaying` hoặc `!np` - Xem bài đang phát\n"
                 "`!skip` hoặc `!s` - Bỏ qua bài hiện tại\n"
@@ -361,6 +369,32 @@ class Help(commands.Cog):
             category: Danh mục trợ giúp (basic, music, speak, image, ai, moderation, admin).
         """
         logger.info(f"{ctx.author} gọi lệnh !help với danh mục: {category or 'all'} trong kênh {ctx.channel}")
+        await self._send_help_embed(ctx, category)
+
+    @app_commands.command(name="help", description="Hiển thị danh sách lệnh hỗ trợ")
+    @app_commands.choices(category=[
+        app_commands.Choice(name="Cơ bản", value="basic"),
+        app_commands.Choice(name="Nhạc", value="music"),
+        app_commands.Choice(name="Nói", value="speak"),
+        app_commands.Choice(name="Ảnh", value="image"),
+        app_commands.Choice(name="AI", value="ai"),
+        app_commands.Choice(name="Kiểm duyệt", value="moderation"),
+        app_commands.Choice(name="Quản trị", value="admin")
+    ])
+    async def slash_help(self, interaction: discord.Interaction, category: Optional[app_commands.Choice[str]] = None) -> None:
+        """Phiên bản lệnh chém của trợ giúp."""
+        category_value = category.value if category else None
+        logger.info(f"{interaction.user} gọi lệnh /help với danh mục: {category_value or 'all'} trong kênh {interaction.channel}")
+        await self._send_help_embed(interaction, category_value, is_slash=True)
+
+    async def _send_help_embed(self, target, category: Optional[str] = None, is_slash: bool = False) -> None:
+        """Gửi embed trợ giúp đến người dùng.
+
+        Args:
+            target: Có thể là Context hoặc Interaction.
+            category: Danh mục trợ giúp.
+            is_slash: Xác định nếu đây là lệnh slash.
+        """
         help_methods = {
             "basic": self._basic_help,
             "music": self._music_help,
@@ -386,13 +420,28 @@ class Help(commands.Cog):
                 )
         else:
             embed = self._full_help()
-            view = self.HelpView(self)
-            message = await ctx.send(embed=embed, view=view)
-            view.message = message
-            return
+            # Chỉ hiển thị các nút tương tác cho các lệnh văn bản
+            if not is_slash:
+                view = self.HelpView(self)
+                if isinstance(target, commands.Context):
+                    message = await target.send(embed=embed, view=view)
+                    view.message = message
+                    return
+                elif isinstance(target, discord.Interaction):
+                    await target.response.send_message(embed=embed, view=view)
+                    view.message = await target.original_response()
+                    return
 
         embed.set_footer(text="DSB Bot - Phát triển bởi VanDung-dev")
         embed.set_thumbnail(
             url=self.bot.user.avatar.url if self.bot.user.avatar else self.bot.user.default_avatar.url
         )
-        await ctx.send(embed=embed)
+        
+        # Gửi một cách thích hợp dựa trên loại mục tiêu
+        if isinstance(target, commands.Context):
+            await target.send(embed=embed)
+        elif isinstance(target, discord.Interaction):
+            if is_slash and not target.response.is_done():
+                await target.response.send_message(embed=embed)
+            else:
+                await target.followup.send(embed=embed)
