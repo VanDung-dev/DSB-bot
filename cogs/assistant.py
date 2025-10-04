@@ -15,7 +15,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Định nghĩa model AI
-AI_MODEL = "gemini-1.5-flash"
+AI_MODEL = "gemma-3-27b-it"
 
 
 def load_markdown(filename: str) -> str:
