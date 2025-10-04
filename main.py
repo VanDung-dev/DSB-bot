@@ -15,6 +15,7 @@ from cogs.image import ImageSearch
 from cogs.moderation import Moderation
 from cogs.music import MusicSearch
 from cogs.welcome import Welcome
+from cogs.speak import Speaking
 
 
 # Kiểm tra phiên bản Python tối thiểu
@@ -77,6 +78,12 @@ def check_and_create_env() -> None:
     elif not env_vars.get("SPOTIFY_CLIENT_SECRET") or env_vars.get("SPOTIFY_CLIENT_SECRET") == "your_spotify_secret_id_here":
         env_vars["SPOTIFY_CLIENT_SECRET"] = ""
     
+    tts_default_language = input(f"TTS_DEFAULT_LANGUAGE (Default TTS language - để trống để dùng tiếng Việt) [{env_vars.get('TTS_DEFAULT_LANGUAGE', 'vi')}]: ").strip()
+    if tts_default_language:
+        env_vars["TTS_DEFAULT_LANGUAGE"] = tts_default_language
+    elif not env_vars.get("TTS_DEFAULT_LANGUAGE"):
+        env_vars["TTS_DEFAULT_LANGUAGE"] = "vi"
+    
     # Ghi các giá trị vào file .env
     with open(env_path, "w", encoding="utf-8") as f:
         f.write("# Discord Bot Token - Nhận nó từ https://discord.com/developers/applications\n")
@@ -87,7 +94,10 @@ def check_and_create_env() -> None:
         
         f.write("# Spotify Client - Nhận nó từ https://developer.spotify.com/dashboard\n")
         f.write(f"SPOTIFY_CLIENT_ID={env_vars.get('SPOTIFY_CLIENT_ID', '')}\n")
-        f.write(f"SPOTIFY_CLIENT_SECRET={env_vars.get('SPOTIFY_CLIENT_SECRET', '')}\n")
+        f.write(f"SPOTIFY_CLIENT_SECRET={env_vars.get('SPOTIFY_CLIENT_SECRET', '')}\n\n")
+        
+        f.write("# Default TTS language - Language code for text-to-speech (e.g., vi, en, fr, ja)\n")
+        f.write(f"TTS_DEFAULT_LANGUAGE={env_vars.get('TTS_DEFAULT_LANGUAGE', 'vi')}\n")
     
     print(f"✅ Đã lưu cấu hình vào {env_path}")
     print("Vui lòng khởi động lại bot!")
@@ -146,6 +156,7 @@ async def setup_cogs() -> None:
         Welcome(bot),
         ImageSearch(bot),
         Moderation(bot),
+        Speaking(bot),
     ]
     for cog in cogs:
         try:
