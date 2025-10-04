@@ -256,18 +256,11 @@ class Help(commands.Cog):
             title="🤖 DSB Bot - Hướng dẫn sử dụng",
             description=(
                 "Danh sách các lệnh có sẵn để tương tác với DSB Bot. "
-                "Chọn danh mục bên dưới hoặc gõ `!help <danh mục>` (VD: `!help music`).\n"
-                "**Danh mục**: basic, music, image, ai, moderation, admin"
+                "Chọn danh mục bên dưới hoặc gõ `!help <danh mục>`.\n"
+                "**Danh mục**: Cơ bản, Nhạc, Nói, Ảnh, AI, Kiểm duyệt, Admin"
             ),
             color=0x00FF88,
         )
-        embed.add_field(name="📋 Lệnh cơ bản", value="Gõ `!help basic`", inline=False)
-        embed.add_field(name="🎵 Lệnh nhạc", value="Gõ `!help music` (YouTube + Spotify)", inline=False)
-        embed.add_field(name="📢 Lệnh nói", value="Gõ `!help speak`", inline=False)
-        embed.add_field(name="🖼️ Lệnh tìm kiếm ảnh", value="Gõ `!help image`", inline=False)
-        embed.add_field(name="🤖 Lệnh AI", value="Gõ `!help ai`", inline=False)
-        embed.add_field(name="🚨 Lệnh kiểm duyệt", value="Gõ `!help moderation`", inline=False)
-        embed.add_field(name="⚙️ Lệnh admin", value="Gõ `!help admin`", inline=False)
         embed.add_field(
             name="💡 Ghi chú",
             value=(
