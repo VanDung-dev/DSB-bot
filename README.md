@@ -23,30 +23,30 @@
 ## 🧠 Các lệnh tiêu biểu
 
 ### 📋 Cơ bản
-- `!hello` – Chào hỏi bot.
-- `!help` – Hiển thị danh sách lệnh.
+- `/hello` – Chào hỏi bot.
+- `/help` – Hiển thị danh sách lệnh.
 
 ### 🎵 Âm nhạc
-- `!play <từ khóa|URL>` – Phát nhạc hoặc thêm vào hàng đợi.
-- `!queue`, `!np`, `!pause`, `!skip`, `!resume`, `!clear`, `!remove <số>`, `!stop`, `!leave`.
+- `/play <từ khóa|URL>` – Phát nhạc hoặc thêm vào hàng đợi.
+- `/queue`, `/np`, `/pause`, `/skip`, `/resume`, `/clear`, `/remove <số>`, `/stop`, `/leave`.
 
 ### 🤖 AI
-- `!ai <tin nhắn>` – Chat với Gemini AI.
-- `!aistatus`, `!aihelp`, `!aiconfig`.
+- `/ai <tin nhắn>` – Chat với Gemini AI.
+- `/aistatus`, `/aihelp`, `/aiconfig`.
 
 ### 🖼️ Hình ảnh
-- `!image <từ khóa>` – Tìm kiếm ảnh từ DuckDuckGo.
+- `/image <từ khóa>` – Tìm kiếm ảnh từ DuckDuckGo.
 
 ### 📢 Nói chuyện
-- `!say <tin nhắn>` – Bot sẽ nói thay cho bạn trong kênh thoại.
+- `/say <tin nhắn>` – Bot sẽ nói thay cho bạn trong kênh thoại.
 
 ### 🚨 Kiểm duyệt
-- `!addbadword`, `!removebadword`, `!listbadwords`, `!modhelp`.
+- `/addbadword`, `/removebadword`, `/listbadwords`, `/modhelp`.
 
 ### ⚙️ Quản trị viên
-- `!setwelcome <#channel>`, `!testwelcome <@user>`, `!aiconfig`.
+- `/setwelcome <#channel>`, `/testwelcome <@user>`, `/aiconfig`.
 
-> Gõ `!help <danh mục>` để xem hướng dẫn chi tiết từng nhóm lệnh: `basic`, `music`, `speak`, `image`, `ai`, `moderation`, `admin`.
+> Gõ `/help <danh mục>` để xem hướng dẫn chi tiết từng nhóm lệnh: `basic`, `music`, `speak`, `image`, `ai`, `moderation`, `admin`.
 
 ---
 
