@@ -17,6 +17,8 @@ from cogs.music import MusicSearch
 from cogs.welcome import Welcome
 from cogs.speak import Speaking
 
+from slash_setup import initialize_slash_commands
+
 
 # Kiểm tra phiên bản Python tối thiểu
 if sys.version_info < (3, 11):
@@ -145,6 +147,9 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 async def on_ready() -> None:
     """Sự kiện khi bot sẵn sàng hoạt động."""
     logger.info(f"🤖 Bot đã đăng nhập thành công: {bot.user} (ID: {bot.user.id})")
+    # Khởi tạo lệnh slash
+    slash_setup = await initialize_slash_commands(bot)
+    logger.info("✅ Đã khởi tạo slash commands")
 
 
 async def setup_cogs() -> None:
