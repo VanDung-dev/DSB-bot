@@ -6,6 +6,7 @@ from typing import List
 
 import discord
 from discord.ext import commands
+from discord import app_commands
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class Moderation(commands.Cog):
             return
 
         content = message.content.lower()
-        if content.startswith(("!addbadword", "!removebadword")):
+        if content.startswith(("/addbadword", "/removebadword")):
             logger.info(f"📝 Bỏ qua kiểm tra từ cấm cho lệnh: {content} từ {message.author}")
             try:
                 await message.delete()
@@ -97,7 +98,7 @@ class Moderation(commands.Cog):
                         title="🚨 Cảnh báo từ DSB Bot",
                         description=(
                             f"{message.author.mention}, tin nhắn của bạn chứa từ ngữ không phù hợp: **{word}**. "
-                            "Vui lòng tuân thủ quy tắc server!"
+                            "Vui lòng tuân thủ quy tắc server/"
                         ),
                         color=discord.Color.red(),
                     )
@@ -113,7 +114,7 @@ class Moderation(commands.Cog):
                         )
                         await message.channel.send(
                             f"{message.author.mention}, tin nhắn của bạn chứa từ cấm nhưng bot không có quyền xóa. "
-                            "Vui lòng tự chỉnh sửa!"
+                            "Vui lòng tự chỉnh sửa/"
                         )
                     except Exception as e:
                         logger.error(f"❌ Lỗi khi xử lý vi phạm: {e}")
@@ -128,7 +129,7 @@ class Moderation(commands.Cog):
             ctx: Ngữ cảnh lệnh Discord.
             word: Từ cần thêm vào danh sách từ cấm.
         """
-        logger.info(f"{ctx.author} gọi lệnh !addbadword với từ: {word}")
+        logger.info(f"{ctx.author} gọi lệnh /addbadword với từ: {word}")
         word = word.lower().strip()
         if not word:
             await ctx.send("❌ Vui lòng cung cấp từ cấm hợp lệ.")
@@ -146,6 +147,35 @@ class Moderation(commands.Cog):
         )
         await ctx.send(embed=embed)
         logger.info(f"✅ Đã thêm từ cấm: {word}")
+        
+    @app_commands.command(name="addbadword", description="Thêm từ cấm vào danh sách (chỉ admin)")
+    @app_commands.describe(word="Từ cần thêm vào danh sách từ cấm")
+    @app_commands.default_permissions(administrator=True)
+    async def slash_add_bad_word(self, interaction: discord.Interaction, word: str) -> None:
+        """Slash command thêm từ cấm vào danh sách (chỉ admin).
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            word: Từ cần thêm vào danh sách từ cấm.
+        """
+        logger.info(f"{interaction.user} gọi slash command /addbadword với từ: {word}")
+        word = word.lower().strip()
+        if not word:
+            await interaction.response.send_message("❌ Vui lòng cung cấp từ cấm hợp lệ.", ephemeral=True)
+            return
+        if word in self.bad_words:
+            await interaction.response.send_message(f"❌ Từ '{word}' đã có trong danh sách từ cấm.", ephemeral=True)
+            return
+
+        self.bad_words.append(word)
+        self.save_bad_words()
+        embed = discord.Embed(
+            title="✅ Thành công",
+            description=f"Đã thêm từ cấm: **{word}**.",
+            color=discord.Color.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        logger.info(f"✅ Đã thêm từ cấm: {word}")
 
     @commands.command(name="removebadword")
     @commands.has_permissions(administrator=True)
@@ -156,7 +186,7 @@ class Moderation(commands.Cog):
             ctx: Ngữ cảnh lệnh Discord.
             word: Từ cần xóa khỏi danh sách từ cấm.
         """
-        logger.info(f"{ctx.author} gọi lệnh !removebadword với từ: {word}")
+        logger.info(f"{ctx.author} gọi lệnh /removebadword với từ: {word}")
         word = word.lower().strip()
         if not word:
             await ctx.send("❌ Vui lòng cung cấp từ cấm hợp lệ.")
@@ -174,6 +204,35 @@ class Moderation(commands.Cog):
         )
         await ctx.send(embed=embed)
         logger.info(f"✅ Đã xóa từ cấm: {word}")
+        
+    @app_commands.command(name="removebadword", description="Xóa từ cấm khỏi danh sách (chỉ admin)")
+    @app_commands.describe(word="Từ cần xóa khỏi danh sách từ cấm")
+    @app_commands.default_permissions(administrator=True)
+    async def slash_remove_bad_word(self, interaction: discord.Interaction, word: str) -> None:
+        """Slash command xóa từ cấm khỏi danh sách (chỉ admin).
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            word: Từ cần xóa khỏi danh sách từ cấm.
+        """
+        logger.info(f"{interaction.user} gọi slash command /removebadword với từ: {word}")
+        word = word.lower().strip()
+        if not word:
+            await interaction.response.send_message("❌ Vui lòng cung cấp từ cấm hợp lệ.", ephemeral=True)
+            return
+        if word not in self.bad_words:
+            await interaction.response.send_message(f"❌ Từ '{word}' không có trong danh sách từ cấm.", ephemeral=True)
+            return
+
+        self.bad_words.remove(word)
+        self.save_bad_words()
+        embed = discord.Embed(
+            title="✅ Thành công",
+            description=f"Đã xóa từ cấm: **{word}**.",
+            color=discord.Color.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        logger.info(f"✅ Đã xóa từ cấm: {word}")
 
     @commands.command(name="listbadwords")
     @commands.has_permissions(administrator=True)
@@ -183,7 +242,7 @@ class Moderation(commands.Cog):
         Args:
             ctx: Ngữ cảnh lệnh Discord.
         """
-        logger.info(f"{ctx.author} gọi lệnh !listbadwords")
+        logger.info(f"{ctx.author} gọi lệnh /listbadwords")
         if not self.bad_words:
             embed = discord.Embed(
                 title="📜 Danh sách từ cấm",
@@ -210,6 +269,51 @@ class Moderation(commands.Cog):
                 color=discord.Color.blue(),
             )
             await ctx.send(embed=embed)
+            
+    @app_commands.command(name="listbadwords", description="Hiển thị danh sách từ cấm (chỉ admin)")
+    @app_commands.default_permissions(administrator=True)
+    async def slash_list_bad_words(self, interaction: discord.Interaction) -> None:
+        """Slash command hiển thị danh sách từ cấm (chỉ admin).
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        logger.info(f"{interaction.user} gọi slash command /listbadwords")
+        if not self.bad_words:
+            embed = discord.Embed(
+                title="📜 Danh sách từ cấm",
+                description="Danh sách từ cấm hiện đang trống.",
+                color=discord.Color.blue(),
+            )
+            await interaction.response.send_message(embed=embed)
+            return
+
+        words_str = "\n".join(self.bad_words)
+        if len(words_str) > 1000:
+            words_chunks = [self.bad_words[i : i + 50] for i in range(0, len(self.bad_words), 50)]
+            # For the first chunk, we send as the response
+            embed = discord.Embed(
+                title="📜 Danh sách từ cấm",
+                description="\n".join(words_chunks[0]),
+                color=discord.Color.blue(),
+            )
+            await interaction.response.send_message(embed=embed)
+            
+            # For subsequent chunks, we send as followups
+            for i, chunk in enumerate(words_chunks[1:], start=2):
+                embed = discord.Embed(
+                    title=f"📜 Danh sách từ cấm (phần {i})",
+                    description="\n".join(chunk),
+                    color=discord.Color.blue(),
+                )
+                await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="📜 Danh sách từ cấm",
+                description=words_str,
+                color=discord.Color.blue(),
+            )
+            await interaction.response.send_message(embed=embed)
 
     @commands.command(name="modhelp")
     async def moderation_help(self, ctx: commands.Context) -> None:
@@ -218,7 +322,7 @@ class Moderation(commands.Cog):
         Args:
             ctx: Ngữ cảnh lệnh Discord.
         """
-        logger.info(f"{ctx.author} gọi lệnh !modhelp")
+        logger.info(f"{ctx.author} gọi lệnh /modhelp")
         embed = discord.Embed(
             title="🚨 Hướng dẫn kiểm duyệt",
             description="Các lệnh để quản lý nội dung vi phạm trên server.",
@@ -227,20 +331,51 @@ class Moderation(commands.Cog):
         embed.add_field(
             name="📋 Lệnh kiểm duyệt",
             value=(
-                "`!addbadword <từ>` - Thêm từ cấm (chỉ admin)\n"
-                "`!removebadword <từ>` - Xóa từ cấm (chỉ admin)\n"
-                "`!listbadwords` - Xem danh sách từ cấm (chỉ admin)\n"
-                "`!modhelp` - Hiển thị hướng dẫn này"
+                "`/addbadword <từ>` - Thêm từ cấm (chỉ admin)\n"
+                "`/removebadword <từ>` - Xóa từ cấm (chỉ admin)\n"
+                "`/listbadwords` - Xem danh sách từ cấm (chỉ admin)\n"
+                "`/modhelp` - Hiển thị hướng dẫn này"
             ),
             inline=False,
         )
         embed.add_field(
             name="💡 Ghi chú",
             value="Bot tự động kiểm tra tin nhắn và gửi cảnh báo khi phát hiện từ cấm, "
-            "ngoại trừ các lệnh !addbadword và !removebadword.",
+            "ngoại trừ các lệnh /addbadword và /removebadword.",
             inline=False,
         )
         await ctx.send(embed=embed)
+        
+    @app_commands.command(name="modhelp", description="Hiển thị hướng dẫn sử dụng các lệnh kiểm duyệt")
+    async def slash_moderation_help(self, interaction: discord.Interaction) -> None:
+        """Slash command hiển thị hướng dẫn sử dụng các lệnh kiểm duyệt.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        logger.info(f"{interaction.user} gọi slash command /modhelp")
+        embed = discord.Embed(
+            title="🚨 Hướng dẫn kiểm duyệt",
+            description="Các lệnh để quản lý nội dung vi phạm trên server.",
+            color=discord.Color.orange(),
+        )
+        embed.add_field(
+            name="📋 Lệnh kiểm duyệt",
+            value=(
+                "`/addbadword <từ>` - Thêm từ cấm (chỉ admin)\n"
+                "`/removebadword <từ>` - Xóa từ cấm (chỉ admin)\n"
+                "`/listbadwords` - Xem danh sách từ cấm (chỉ admin)\n"
+                "`/modhelp` - Hiển thị hướng dẫn này"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="💡 Ghi chú",
+            value="Bot tự động kiểm tra tin nhắn và gửi cảnh báo khi phát hiện từ cấm, "
+            "ngoại trừ các lệnh /addbadword và /removebadword.",
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed)
 
     @add_bad_word.error
     @remove_bad_word.error
@@ -257,3 +392,16 @@ class Moderation(commands.Cog):
             logger.warning(f"⚠️ {ctx.author} cố gắng dùng lệnh admin mà không có quyền")
         elif isinstance(error, commands.MissingRequiredArgument):
             await ctx.send("❌ Vui lòng cung cấp từ cấm hợp lệ.")
+            
+    @slash_add_bad_word.error
+    @slash_remove_bad_word.error
+    async def slash_moderation_command_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        """Xử lý lỗi cho các slash command kiểm duyệt.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            error: Lỗi được ném ra.
+        """
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Bạn cần quyền Administrator để sử dụng lệnh này.", ephemeral=True)
+            logger.warning(f"⚠️ {interaction.user} cố gắng dùng lệnh admin mà không có quyền")
