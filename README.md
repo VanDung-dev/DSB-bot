@@ -129,14 +129,32 @@ docker run --env-file .env dsb-bot
 ---
 
 ## ☁️ Chạy trên Replit
-
+### 1. Tạo file `replit.nix`
 * Đảm bảo có file `replit.nix` để cài `ffmpeg` và `libopus`.
-* Thêm `KEY_DISCORD` và `GEMINI_API_KEY` vào phần **Secrets**.
-* Chạy:
-
-```bash
-python main.py
+```nix
+{ pkgs }: {
+    deps = [
+        pkgs.ffmpeg
+        pkgs.libopus
+        pkgs.libvpx
+        pkgs.yasm
+        pkgs.pkg-config
+    ];
+}
 ```
+
+### 2. Tạo file `.env`
+
+```env
+KEY_DISCORD=<your_discord_bot_token>
+GEMINI_API_KEY=<your_gemini_api_key>
+SPOTIFY_CLIENT_ID=<your_spotify_client_id>
+SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
+TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
+```
+### 3. Chạy chương trình
+* Trên Replit: Ấn nút **Run**
+* Chương trình sẽ tự build và chạy bot
 
 ---
 
