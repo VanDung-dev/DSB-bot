@@ -89,6 +89,38 @@ class Help(commands.Cog):
         return embed
 
     @staticmethod
+    def _speak_help() -> discord.Embed:
+        """Tạo embed cho danh mục lệnh nói (text-to-speech).
+
+        Returns:
+            Embed chứa thông tin lệnh nói.
+        """
+        embed = discord.Embed(
+            title="📢 Lệnh nói (Text-to-Speech)",
+            description="Các lệnh để chuyển văn bản thành giọng nói.",
+            color=0x00FF88,
+        )
+        embed.add_field(
+            name="Lệnh",
+            value=(
+                "`!say <văn bản>` - Chuyển văn bản thành giọng nói\n"
+                "`!speak <văn bản>` - Bí danh cho lệnh `!say`\n"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Cách sử dụng",
+            value=(
+                "• Bạn cần ở trong **voice channel** để sử dụng lệnh này.\n"
+                "• Bot sẽ tự động kết nối vào voice channel của bạn.\n"
+                "• Bot sẽ phát âm thanh tương ứng với văn bản bạn nhập.\n"
+                "• Ngôn ngữ mặc định được cấu hình trong file `.env`.\n"
+            ),
+            inline=False,
+        )
+        return embed
+
+    @staticmethod
     def _image_help() -> discord.Embed:
         """Tạo embed cho danh mục lệnh tìm kiếm ảnh và video.
 
@@ -224,6 +256,7 @@ class Help(commands.Cog):
         )
         embed.add_field(name="📋 Lệnh cơ bản", value="Gõ `!help basic`", inline=False)
         embed.add_field(name="🎵 Lệnh nhạc", value="Gõ `!help music` (YouTube + Spotify)", inline=False)
+        embed.add_field(name="📢 Lệnh nói", value="Gõ `!help speak`", inline=False)
         embed.add_field(name="🖼️ Lệnh tìm kiếm ảnh", value="Gõ `!help image`", inline=False)
         embed.add_field(name="🤖 Lệnh AI", value="Gõ `!help ai`", inline=False)
         embed.add_field(name="🚨 Lệnh kiểm duyệt", value="Gõ `!help moderation`", inline=False)
@@ -231,7 +264,7 @@ class Help(commands.Cog):
         embed.add_field(
             name="💡 Ghi chú",
             value=(
-                "• Bạn cần ở trong **voice channel** để sử dụng lệnh nhạc.\n"
+                "• Bạn cần ở trong **voice channel** để sử dụng lệnh nhạc và lệnh nói.\n"
                 "• Các lệnh admin yêu cầu quyền **Administrator**.\n"
                 "• Bot tự động gửi tin nhắn chào mừng/tạm biệt và kiểm duyệt từ cấm."
             ),
@@ -268,6 +301,13 @@ class Help(commands.Cog):
         async def music_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
             """Xử lý nút danh mục nhạc."""
             embed = self.cog._music_help()
+            self._set_embed_footer_and_thumbnail(embed)
+            await interaction.response.edit_message(embed=embed, view=self)
+
+        @discord.ui.button(label="Nói", style=discord.ButtonStyle.secondary, emoji="📢")
+        async def talk_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+            """Xử lý nút danh mục nói (text-to-speech)."""
+            embed = self.cog._speak_help()
             self._set_embed_footer_and_thumbnail(embed)
             await interaction.response.edit_message(embed=embed, view=self)
 
@@ -318,12 +358,13 @@ class Help(commands.Cog):
 
         Args:
             ctx: Ngữ cảnh lệnh Discord.
-            category: Danh mục trợ giúp (basic, music, image, ai, moderation, admin).
+            category: Danh mục trợ giúp (basic, music, speak, image, ai, moderation, admin).
         """
         logger.info(f"{ctx.author} gọi lệnh !help với danh mục: {category or 'all'} trong kênh {ctx.channel}")
         help_methods = {
             "basic": self._basic_help,
             "music": self._music_help,
+            "speak": self._speak_help,
             "image": self._image_help,
             "ai": self._ai_help,
             "moderation": self._moderation_help,
@@ -339,7 +380,7 @@ class Help(commands.Cog):
                     title="❌ Danh mục không hợp lệ",
                     description=(
                         f"Danh mục `{category}` không tồn tại. "
-                        "Gõ `!help` để xem danh sách danh mục hoặc thử: basic, music, image, ai, moderation, admin"
+                        "Gõ `!help` để xem danh sách danh mục hoặc thử: basic, music, speak, image, ai, moderation, admin"
                     ),
                     color=0xFF0000,
                 )
