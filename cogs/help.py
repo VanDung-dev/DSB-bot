@@ -245,33 +245,6 @@ class Help(commands.Cog):
         )
         return embed
 
-    @staticmethod
-    def _full_help() -> discord.Embed:
-        """Tạo embed cho toàn bộ danh sách lệnh.
-
-        Returns:
-            Embed chứa thông tin tổng quan các danh mục lệnh.
-        """
-        embed = discord.Embed(
-            title="🤖 DSB Bot - Hướng dẫn sử dụng",
-            description=(
-                "Danh sách các lệnh có sẵn để tương tác với DSB Bot. "
-                "Chọn danh mục bên dưới hoặc gõ `!help <danh mục>`.\n"
-                "**Danh mục**: Cơ bản, Nhạc, Nói, Ảnh, AI, Kiểm duyệt, Admin"
-            ),
-            color=0x00FF88,
-        )
-        embed.add_field(
-            name="💡 Ghi chú",
-            value=(
-                "• Bạn cần ở trong **voice channel** để sử dụng lệnh nhạc và lệnh nói.\n"
-                "• Các lệnh admin yêu cầu quyền **Administrator**.\n"
-                "• Bot tự động gửi tin nhắn chào mừng/tạm biệt và kiểm duyệt từ cấm."
-            ),
-            inline=False,
-        )
-        return embed
-
     class HelpView(discord.ui.View):
         """View chứa các nút tương tác cho danh mục trợ giúp."""
 
@@ -371,7 +344,7 @@ class Help(commands.Cog):
         app_commands.Choice(name="Ảnh", value="image"),
         app_commands.Choice(name="AI", value="ai"),
         app_commands.Choice(name="Kiểm duyệt", value="moderation"),
-        app_commands.Choice(name="Quản trị", value="admin")
+        app_commands.Choice(name="Admin", value="admin")
     ])
     async def slash_help(self, interaction: discord.Interaction, category: Optional[app_commands.Choice[str]] = None) -> None:
         """Phiên bản lệnh chém của trợ giúp."""
@@ -406,12 +379,12 @@ class Help(commands.Cog):
                     title="❌ Danh mục không hợp lệ",
                     description=(
                         f"Danh mục `{category}` không tồn tại. "
-                        "Gõ `!help` để xem danh sách danh mục hoặc thử: basic, music, speak, image, ai, moderation, admin"
+                        "Gõ `/help` để xem danh sách danh mục hoặc thử: Cơ bản, Nhạc, Nói, Ảnh, AI, Kiểm duyệt, Admin"
                     ),
                     color=0xFF0000,
                 )
         else:
-            embed = self._full_help()
+            embed = self._basic_help()
             # Chỉ hiển thị các nút tương tác cho các lệnh văn bản
             if not is_slash:
                 view = self.HelpView(self)
