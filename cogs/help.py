@@ -54,8 +54,8 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!hello` - Chào hỏi với bot\n"
-                "`!help [danh mục]` - Hiển thị hướng dẫn (gõ `!help` để xem danh sách danh mục)"
+                "`/hello` - Chào hỏi với bot\n"
+                "`/help [danh mục]` - Hiển thị hướng dẫn (gõ `/help` để xem danh sách danh mục)"
             ),
             inline=False,
         )
@@ -72,16 +72,16 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!play <URL/tìm kiếm>` hoặc `!p` - Phát nhạc hoặc thêm vào hàng đợi\n"
-                "`!queue` hoặc `!q` - Xem danh sách hàng đợi\n"
-                "`!nowplaying` hoặc `!np` - Xem bài đang phát\n"
-                "`!skip` hoặc `!s` - Bỏ qua bài hiện tại\n"
-                "`!pause` - Tạm dừng nhạc\n"
-                "`!resume` - Tiếp tục phát nhạc\n"
-                "`!clear` - Xóa toàn bộ hàng đợi\n"
-                "`!remove <số>` hoặc `!rm` - Xóa bài ở vị trí cụ thể\n"
-                "`!stop` - Dừng nhạc và xóa hàng đợi\n"
-                "`!leave` - Bot rời voice channel"
+                "`/play <URL/tìm kiếm>` - Phát nhạc hoặc thêm vào hàng đợi\n"
+                "`/queue` - Xem danh sách hàng đợi\n"
+                "`/nowplaying` - Xem bài đang phát\n"
+                "`/skip` - Bỏ qua bài hiện tại\n"
+                "`/pause` - Tạm dừng nhạc\n"
+                "`/resume` - Tiếp tục phát nhạc\n"
+                "`/clear` - Xóa toàn bộ hàng đợi\n"
+                "`/remove <số>` - Xóa bài ở vị trí cụ thể\n"
+                "`/stop` - Dừng nhạc và xóa hàng đợi\n"
+                "`/leave` - Bot rời voice channel"
             ),
             inline=False,
         )
@@ -111,8 +111,7 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!say <văn bản>` - Chuyển văn bản thành giọng nói\n"
-                "`!speak <văn bản>` - Bí danh cho lệnh `!say`\n"
+                "`/say <văn bản>` - Chuyển văn bản thành giọng nói\n"
             ),
             inline=False,
         )
@@ -143,7 +142,7 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!image <từ khóa>` hoặc `!img` - Tìm ảnh từ DuckDuckGo\n"
+                "`/image <từ khóa>` hoặc `/img` - Tìm ảnh từ DuckDuckGo\n"
                 "`!meme <từ khóa>` - Tìm ảnh meme từ DuckDuckGo\n"
             ),
             inline=False,
@@ -172,10 +171,10 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!ai <tin nhắn>` hoặc `!chat` hoặc `!ask` - Chat với AI\n"
-                "`!aistatus` - Kiểm tra trạng thái AI\n"
-                "`!aihelp` - Hướng dẫn chi tiết về AI\n"
-                "`!aiconfig [setting] [value]` - Cấu hình AI (chỉ admin)"
+                "`/ai <tin nhắn>` - Chat với AI\n"
+                "`/aistatus` - Kiểm tra trạng thái AI\n"
+                "`/aihelp` - Hướng dẫn chi tiết về AI\n"
+                "`/aiconfig [setting] [value]` - Cấu hình AI (chỉ admin)"
             ),
             inline=False,
         )
@@ -201,10 +200,10 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!addbadword <từ>` - Thêm từ cấm (chỉ admin)\n"
-                "`!removebadword <từ>` - Xóa từ cấm (chỉ admin)\n"
-                "`!listbadwords` - Xem danh sách từ cấm (chỉ admin)\n"
-                "`!modhelp` - Hiển thị hướng dẫn kiểm duyệt"
+                "`/addbadword <từ>` - Thêm từ cấm (chỉ admin)\n"
+                "`/removebadword <từ>` - Xóa từ cấm (chỉ admin)\n"
+                "`/listbadwords` - Xem danh sách từ cấm (chỉ admin)\n"
+                "`/modhelp` - Hiển thị hướng dẫn kiểm duyệt"
             ),
             inline=False,
         )
@@ -230,12 +229,12 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`!setwelcome [#channel]` - Thiết lập channel chào mừng\n"
-                "`!testwelcome [@user]` - Kiểm tra tin nhắn chào mừng\n"
-                "`!aiconfig [setting] [value]` - Cấu hình AI\n"
-                "`!addbadword <từ>` - Thêm từ cấm\n"
-                "`!removebadword <từ>` - Xóa từ cấm\n"
-                "`!listbadwords` - Xem danh sách từ cấm"
+                "`/setwelcome [#channel]` - Thiết lập channel chào mừng\n"
+                "`/testwelcome [@user]` - Kiểm tra tin nhắn chào mừng\n"
+                "`/aiconfig [setting] [value]` - Cấu hình AI\n"
+                "`/addbadword <từ>` - Thêm từ cấm\n"
+                "`/removebadword <từ>` - Xóa từ cấm\n"
+                "`/listbadwords` - Xem danh sách từ cấm"
             ),
             inline=False,
         )
