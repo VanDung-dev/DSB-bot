@@ -58,6 +58,8 @@ class MusicSearch(commands.Cog):
                 )
             )
 
+        self.locks: Dict[int, asyncio.Lock] = {}
+
     @staticmethod
     def load_ydl_config() -> dict:
         """Tải cấu hình yt_dlp từ file JSON.
@@ -185,75 +187,86 @@ class MusicSearch(commands.Cog):
 
     @commands.command(name="play", aliases=["p"])
     async def play(self, ctx: commands.Context, *, query: str) -> None:
-        if not ctx.author.voice:
-            await ctx.send("❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
-            return
-
-        voice_channel = ctx.author.voice.channel
         guild_id = ctx.guild.id
 
-        if guild_id not in self.voice_clients:
-            try:
-                self.voice_clients[guild_id] = await voice_channel.connect()
-            except discord.errors.ClientException:
-                await ctx.send("❌ Bot đã ở trong voice channel khác.")
-                return
-            except Exception as e:
-                logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
-                await ctx.send("❌ Lỗi khi kết nối voice channel.")
+        if guild_id not in self.locks:
+            self.locks[guild_id] = asyncio.Lock()
+
+        async with self.locks[guild_id]:
+            if not ctx.author.voice:
+                await ctx.send("❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
                 return
 
-        # Kiểm tra nếu là link Spotify
-        if self.is_spotify_url(query):
-            queries = self.get_spotify_queries(query)
-            if not queries:
-                await ctx.send("❌ Không lấy được nhạc từ Spotify.")
+            voice_channel = ctx.author.voice.channel
+
+            if guild_id not in self.voice_clients:
+                try:
+                    self.voice_clients[guild_id] = await voice_channel.connect()
+                except discord.errors.ClientException:
+                    await ctx.send("❌ Bot đã ở trong voice channel khác.")
+                    return
+                except Exception as e:
+                    logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
+                    await ctx.send("❌ Lỗi khi kết nối voice channel.")
+                    return
+
+            # Kiểm tra nếu là link Spotify
+            if self.is_spotify_url(query):
+                queries = self.get_spotify_queries(query)
+                if not queries:
+                    await ctx.send("❌ Không lấy được nhạc từ Spotify.")
+                    return
+
+                first = True
+                for q in queries:
+                    video_info = await self.get_video_info(q)
+                    if not video_info:
+                        continue
+
+                    if guild_id not in self.queues:
+                        self.queues[guild_id] = deque()
+                    self.queues[guild_id].append(video_info)
+
+                    if first:
+                        if guild_id in self.now_playing:
+                            embed = discord.Embed(
+                                title="✅ Đã thêm từ Spotify vào hàng đợi",
+                                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                                color=discord.Color.blue(),
+                            )
+                            await ctx.send(embed=embed)
+                        else:
+                            embed = discord.Embed(
+                                title="🎵 Đang phát từ Spotify",
+                                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                                color=discord.Color.green(),
+                            )
+                            await ctx.send(embed=embed)
+                            await self.play_next(guild_id)
+                        first = False
                 return
 
-            first = True
-            for q in queries:
-                video_info = await self.get_video_info(q)
-                if not video_info:
-                    continue
+            # Nếu là YouTube hoặc search
+            search_msg = await ctx.send(f"🔍 Đang tìm: **{query}**...")
+            video_info = await self.get_video_info(query)
+            if not video_info:
+                await search_msg.edit(content="❌ Không tìm thấy video.")
+                return
 
-                if guild_id not in self.queues:
-                    self.queues[guild_id] = deque()
-                self.queues[guild_id].append(video_info)
+            if guild_id not in self.queues:
+                self.queues[guild_id] = deque()
+            self.queues[guild_id].append(video_info)
 
-                if first:
-                    embed = discord.Embed(
-                        title="🎵 Đang phát từ Spotify",
-                        description=f"[{video_info['title']}]({video_info['webpage_url']})",
-                        color=discord.Color.green(),
-                    )
-                    await ctx.send(embed=embed)
-                    if guild_id not in self.now_playing:
-                        await self.play_next(guild_id)
-                    first = False
-            return
+            embed = discord.Embed(
+                title="✅ Đã thêm vào hàng đợi",
+                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                color=discord.Color.blue(),
+            )
+            await search_msg.edit(content="", embed=embed)
 
-        # Nếu không phải Spotify → xử lý như cũ (YouTube)
-        search_msg = await ctx.send(f"🔍 Đang tìm: **{query}**...")
-        video_info = await self.get_video_info(query)
-        if not video_info:
-            await search_msg.edit(content="❌ Không tìm thấy video.")
-            return
+            if guild_id not in self.now_playing:
+                await self.play_next(guild_id)
 
-        if guild_id not in self.queues:
-            self.queues[guild_id] = deque()
-        self.queues[guild_id].append(video_info)
-
-        embed = discord.Embed(
-            title="✅ Đã thêm vào hàng đợi",
-            description=f"[{video_info['title']}]({video_info['webpage_url']})",
-            color=discord.Color.blue(),
-        )
-        await search_msg.edit(content="", embed=embed)
-        logger.info(f"✅ Đã thêm: {video_info['title']} vào hàng đợi guild {guild_id}")
-
-        if guild_id not in self.now_playing:
-            await self.play_next(guild_id)
-            
     @app_commands.command(name="play", description="Phát nhạc hoặc thêm vào hàng đợi")
     @app_commands.describe(query="URL hoặc từ khóa tìm kiếm")
     async def slash_play(self, interaction: discord.Interaction, query: str) -> None:
@@ -263,86 +276,86 @@ class MusicSearch(commands.Cog):
             interaction: Tương tác từ người dùng.
             query: URL hoặc từ khóa tìm kiếm.
         """
-        await interaction.response.send_message(f"🔍 Đang tìm: **{query}**...", ephemeral=False)
-        
-        if not interaction.user.voice:
-            await interaction.edit_original_response(content="❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
-            return
-
-        voice_channel = interaction.user.voice.channel
         guild_id = interaction.guild.id
 
-        if guild_id not in self.voice_clients:
-            try:
-                self.voice_clients[guild_id] = await voice_channel.connect()
-            except discord.errors.ClientException:
-                await interaction.edit_original_response(content="❌ Bot đã ở trong voice channel khác.")
-                return
-            except Exception as e:
-                logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
-                await interaction.edit_original_response(content="❌ Lỗi khi kết nối voice channel.")
+        if guild_id not in self.locks:
+            self.locks[guild_id] = asyncio.Lock()
+
+        async with self.locks[guild_id]:
+            await interaction.response.send_message(f"🔍 Đang tìm: **{query}**...", ephemeral=False)
+
+            if not interaction.user.voice:
+                await interaction.edit_original_response(content="❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
                 return
 
-        # Kiểm tra nếu là link Spotify
-        if self.is_spotify_url(query):
-            queries = self.get_spotify_queries(query)
-            if not queries:
-                await interaction.edit_original_response(content="❌ Không lấy được nhạc từ Spotify.")
+            voice_channel = interaction.user.voice.channel
+
+            if guild_id not in self.voice_clients:
+                try:
+                    self.voice_clients[guild_id] = await voice_channel.connect()
+                except discord.errors.ClientException:
+                    await interaction.edit_original_response(content="❌ Bot đã ở trong voice channel khác.")
+                    return
+                except Exception as e:
+                    logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
+                    await interaction.edit_original_response(content="❌ Lỗi khi kết nối voice channel.")
+                    return
+
+            # Kiểm tra nếu là link Spotify
+            if self.is_spotify_url(query):
+                queries = self.get_spotify_queries(query)
+                if not queries:
+                    await interaction.edit_original_response(content="❌ Không lấy được nhạc từ Spotify.")
+                    return
+
+                first = True
+                for q in queries:
+                    video_info = await self.get_video_info(q)
+                    if not video_info:
+                        continue
+
+                    if guild_id not in self.queues:
+                        self.queues[guild_id] = deque()
+                    self.queues[guild_id].append(video_info)
+
+                    if first:
+                        if guild_id in self.now_playing:
+                            embed = discord.Embed(
+                                title="✅ Đã thêm từ Spotify vào hàng đợi",
+                                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                                color=discord.Color.blue(),
+                            )
+                            await interaction.edit_original_response(content="", embed=embed)
+                        else:
+                            embed = discord.Embed(
+                                title="🎵 Đang phát từ Spotify",
+                                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                                color=discord.Color.green(),
+                            )
+                            await interaction.edit_original_response(content="", embed=embed)
+                            await self.play_next(guild_id)
+                        first = False
+                return
+
+            # Nếu không phải Spotify → xử lý như cũ (YouTube)
+            video_info = await self.get_video_info(query)
+            if not video_info:
+                await interaction.edit_original_response(content="❌ Không tìm thấy video.")
                 return
 
             if guild_id not in self.queues:
                 self.queues[guild_id] = deque()
+            self.queues[guild_id].append(video_info)
 
-            first = True
-            for q in queries:
-                video_info = await self.get_video_info(q)
-                if not video_info:
-                    continue
+            embed = discord.Embed(
+                title="✅ Đã thêm vào hàng đợi",
+                description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                color=discord.Color.blue(),
+            )
+            await interaction.edit_original_response(content="", embed=embed)
 
-                self.queues[guild_id].append(video_info)
-
-                if first:
-                    if guild_id in self.now_playing:
-                        # Đang có nhạc -> chỉ thêm vào queue
-                        embed = discord.Embed(
-                            title="✅ Đã thêm từ Spotify vào hàng đợi",
-                            description=f"[{video_info['title']}]({video_info['webpage_url']})",
-                            color=discord.Color.blue(),
-                        )
-                        await interaction.edit_original_response(content="", embed=embed)
-                    else:
-                        # Chưa phát gì -> phát luôn bài đầu tiên
-                        embed = discord.Embed(
-                            title="🎵 Đang phát từ Spotify",
-                            description=f"[{video_info['title']}]({video_info['webpage_url']})",
-                            color=discord.Color.green(),
-                        )
-                        await interaction.edit_original_response(content="", embed=embed)
-                        await self.play_next(guild_id)
-                    first = False
-
-            return
-
-        # Nếu không phải Spotify → xử lý như cũ (YouTube)
-        video_info = await self.get_video_info(query)
-        if not video_info:
-            await interaction.edit_original_response(content="❌ Không tìm thấy video.")
-            return
-
-        if guild_id not in self.queues:
-            self.queues[guild_id] = deque()
-        self.queues[guild_id].append(video_info)
-
-        embed = discord.Embed(
-            title="✅ Đã thêm vào hàng đợi",
-            description=f"[{video_info['title']}]({video_info['webpage_url']})",
-            color=discord.Color.blue(),
-        )
-        await interaction.edit_original_response(content="", embed=embed)
-        logger.info(f"✅ Đã thêm: {video_info['title']} vào hàng đợi guild {guild_id}")
-
-        if guild_id not in self.now_playing:
-            await self.play_next(guild_id)
+            if guild_id not in self.now_playing:
+                await self.play_next(guild_id)
 
     @commands.command(name="queue", aliases=["q"])
     async def queue(self, ctx: commands.Context) -> None:
