@@ -3,6 +3,7 @@ from typing import Optional
 
 import discord
 from discord.ext import commands
+from discord import app_commands
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
@@ -65,12 +66,12 @@ class Welcome(commands.Cog):
         )
         embed.add_field(
             name="🤖 Về DSB Bot",
-            value="Tôi là DSB Bot, có thể giúp bạn:\n• Phát nhạc với `!play`\n• Chat AI với `!ai`\n• Xem hướng dẫn với `!help`",
+            value="Tôi là DSB Bot, có thể giúp bạn:\n• Phát nhạc với `/play`\n• Chat AI với `/ai`\n• Xem hướng dẫn với `/help`",
             inline=False,
         )
         embed.add_field(
             name="📋 Bắt đầu",
-            value="Hãy gõ `!help` để xem tất cả lệnh có sẵn!",
+            value="Hãy gõ `/help` để xem tất cả lệnh có sẵn/",
             inline=False,
         )
         embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
@@ -132,7 +133,7 @@ class Welcome(commands.Cog):
             ctx: Ngữ cảnh lệnh Discord.
             channel: Channel văn bản để thiết lập (mặc định là channel hiện tại).
         """
-        logger.info(f"{ctx.author} (ADMIN) gọi lệnh !setwelcome trong kênh {ctx.channel}")
+        logger.info(f"{ctx.author} (ADMIN) gọi lệnh /setwelcome trong kênh {ctx.channel}")
         channel = channel or ctx.channel
         if not channel.permissions_for(ctx.guild.me).send_messages:
             await ctx.send(f"❌ Bot không có quyền gửi tin nhắn trong {channel.mention}")
@@ -150,6 +151,37 @@ class Welcome(commands.Cog):
         )
         await ctx.send(embed=embed)
         logger.info(f"✅ {ctx.author} đã thiết lập {channel.name} làm welcome channel")
+        
+    @app_commands.command(name="setwelcome", description="Thiết lập channel cho tin nhắn chào mừng (chỉ admin)")
+    @app_commands.describe(channel="Channel văn bản để thiết lập (mặc định là channel hiện tại)")
+    @app_commands.default_permissions(administrator=True)
+    async def slash_set_welcome_channel(
+        self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None
+    ) -> None:
+        """Slash command thiết lập channel cho tin nhắn chào mừng (chỉ admin).
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            channel: Channel văn bản để thiết lập (mặc định là channel hiện tại).
+        """
+        logger.info(f"{interaction.user} (ADMIN) gọi slash command /setwelcome trong kênh {interaction.channel}")
+        channel = channel or interaction.channel
+        if not channel.permissions_for(interaction.guild.me).send_messages:
+            await interaction.response.send_message(f"❌ Bot không có quyền gửi tin nhắn trong {channel.mention}", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="✅ Đã thiết lập channel chào mừng",
+            description=f"Channel {channel.mention} sẽ được ưu tiên cho tin nhắn chào mừng.",
+            color=0x00FF88,
+        )
+        embed.add_field(
+            name="💡 Lưu ý",
+            value="Bot sẽ tự động tìm channel phù hợp nếu không tìm thấy channel được thiết lập.",
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed)
+        logger.info(f"✅ {interaction.user} đã thiết lập {channel.name} làm welcome channel")
 
     @commands.command(name="testwelcome")
     @commands.has_permissions(administrator=True)
@@ -160,10 +192,25 @@ class Welcome(commands.Cog):
             ctx: Ngữ cảnh lệnh Discord.
             member: Thành viên để kiểm tra (mặc định là người gọi lệnh).
         """
-        logger.info(f"{ctx.author} (ADMIN) gọi lệnh !testwelcome trong kênh {ctx.channel}")
+        logger.info(f"{ctx.author} (ADMIN) gọi lệnh /testwelcome trong kênh {ctx.channel}")
         member = member or ctx.author
         await self.on_member_join(member)
         await ctx.send(f"✅ Đã test tin nhắn chào mừng cho {member.mention}")
+        
+    @app_commands.command(name="testwelcome", description="Kiểm tra tin nhắn chào mừng (chỉ admin)")
+    @app_commands.describe(member="Thành viên để kiểm tra (mặc định là người gọi lệnh)")
+    @app_commands.default_permissions(administrator=True)
+    async def slash_test_welcome(self, interaction: discord.Interaction, member: Optional[discord.Member] = None) -> None:
+        """Slash command kiểm tra tin nhắn chào mừng (chỉ admin).
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            member: Thành viên để kiểm tra (mặc định là người gọi lệnh).
+        """
+        logger.info(f"{interaction.user} (ADMIN) gọi slash command /testwelcome trong kênh {interaction.channel}")
+        member = member or interaction.user
+        await self.on_member_join(member)
+        await interaction.response.send_message(f"✅ Đã test tin nhắn chào mừng cho {member.mention}")
 
     @set_welcome_channel.error
     @test_welcome.error
@@ -177,3 +224,16 @@ class Welcome(commands.Cog):
         if isinstance(error, commands.MissingPermissions):
             await ctx.send("❌ Bạn cần quyền Administrator để sử dụng lệnh này.")
             logger.warning(f"⚠️ {ctx.author} cố gắng dùng lệnh admin mà không có quyền")
+            
+    @slash_set_welcome_channel.error
+    @slash_test_welcome.error
+    async def slash_welcome_command_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        """Xử lý lỗi cho các slash command chào mừng.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            error: Lỗi được ném ra.
+        """
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Bạn cần quyền Administrator để sử dụng lệnh này.", ephemeral=True)
+            logger.warning(f"⚠️ {interaction.user} cố gắng dùng lệnh admin mà không có quyền")
