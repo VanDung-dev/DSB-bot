@@ -15,6 +15,7 @@
 | 🚨 Kiểm duyệt    | Tự động kiểm tra tin nhắn chứa từ cấm và cảnh báo. |
 | 🖼️ Tìm kiếm ảnh | Tìm kiếm ảnh từ DuckDuckGo theo từ khóa. |
 | 👋 Chào mừng     | Gửi tin nhắn tự động khi thành viên tham gia hoặc rời server. |
+| 📢 Text-to-Speech| Chuyển đổi văn bản thành giọng nói trong kênh thoại. |
 | 📋 Trợ giúp      | Giao diện trợ giúp bằng nút tương tác, hiển thị danh mục lệnh rõ ràng. |
 
 ---
@@ -36,13 +37,16 @@
 ### 🖼️ Hình ảnh
 - `!image <từ khóa>` – Tìm kiếm ảnh từ DuckDuckGo.
 
+### 📢 Nói chuyện
+- `!say <tin nhắn>` – Bot sẽ nói thay cho bạn trong kênh thoại.
+
 ### 🚨 Kiểm duyệt
 - `!addbadword`, `!removebadword`, `!listbadwords`, `!modhelp`.
 
 ### ⚙️ Quản trị viên
 - `!setwelcome <#channel>`, `!testwelcome <@user>`, `!aiconfig`.
 
-> Gõ `!help <danh mục>` để xem hướng dẫn chi tiết từng nhóm lệnh: `basic`, `music`, `image`, `ai`, `moderation`, `admin`.
+> Gõ `!help <danh mục>` để xem hướng dẫn chi tiết từng nhóm lệnh: `basic`, `music`, `speak`, `image`, `ai`, `moderation`, `admin`.
 
 ---
 
@@ -75,6 +79,7 @@ KEY_DISCORD=<your_discord_bot_token>
 GEMINI_API_KEY=<your_gemini_api_key>
 SPOTIFY_CLIENT_ID=<your_spotify_client_id>
 SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
+TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
 ```
 
 > Có thể sao chép từ `.env.example` nếu có.
@@ -102,6 +107,7 @@ KEY_DISCORD=your_actual_discord_bot_token
 GEMINI_API_KEY=your_actual_gemini_api_key
 SPOTIFY_CLIENT_ID=<your_spotify_client_id>
 SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
+TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
 ```
 
 ### 3. Build và chạy container
@@ -131,37 +137,6 @@ docker run --env-file .env dsb-bot
 ```bash
 python main.py
 ```
-
----
-
-## 📁 Cấu trúc dự án
-
-```
-📦 DSB-Bot/
-├── main.py                  # Khởi tạo bot và đăng ký các cog
-├── cogs/
-│   ├── dsb_music.py         # Lệnh nhạc
-│   ├── dsb_ai.py            # Tương tác AI
-│   ├── dsb_help.py          # Hệ thống trợ giúp
-│   ├── dsb_img.py           # Tìm kiếm ảnh
-│   ├── dsb_moderation.py    # Kiểm duyệt nội dung
-│   └── dsb_welcome.py       # Chào mừng/tạm biệt
-├── ydl_config.json          # Cấu hình yt-dlp
-├── bad_words.json           # Danh sách từ cấm
-├── cookies.txt              # Chứa nội dung cookies (KHÔNG COMMIT)
-├── system_prompt.md         # Hướng dẫn dành cho AI
-├── .env                     # Biến môi trường (KHÔNG COMMIT)
-├── requirements.txt         # Thư viện phụ thuộc
-└── replit.nix               # Cấu hình Replit
-```
-
----
-
-## 💡 Kế hoạch phát triển (Roadmap)
-
-* [ ] Slash Commands (`/play`, `/ai`, v.v.)
-* [ ] Giao diện chào mừng tùy chỉnh
-* [ ] Hệ thống phân quyền nâng cao
 
 ---
 
