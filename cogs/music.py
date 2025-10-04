@@ -12,6 +12,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
 from discord.ext import commands
+from discord import app_commands
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
@@ -252,6 +253,85 @@ class MusicSearch(commands.Cog):
 
         if guild_id not in self.now_playing:
             await self.play_next(guild_id)
+            
+    @app_commands.command(name="play", description="Phát nhạc hoặc thêm vào hàng đợi")
+    @app_commands.describe(query="URL hoặc từ khóa tìm kiếm")
+    async def slash_play(self, interaction: discord.Interaction, query: str) -> None:
+        """Slash command phát nhạc hoặc thêm vào hàng đợi.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            query: URL hoặc từ khóa tìm kiếm.
+        """
+        await interaction.response.send_message(f"🔍 Đang tìm: **{query}**...", ephemeral=False)
+        
+        if not interaction.user.voice:
+            await interaction.edit_original_response(content="❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
+            return
+
+        voice_channel = interaction.user.voice.channel
+        guild_id = interaction.guild.id
+
+        if guild_id not in self.voice_clients:
+            try:
+                self.voice_clients[guild_id] = await voice_channel.connect()
+            except discord.errors.ClientException:
+                await interaction.edit_original_response(content="❌ Bot đã ở trong voice channel khác.")
+                return
+            except Exception as e:
+                logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
+                await interaction.edit_original_response(content="❌ Lỗi khi kết nối voice channel.")
+                return
+
+        # Kiểm tra nếu là link Spotify
+        if self.is_spotify_url(query):
+            queries = self.get_spotify_queries(query)
+            if not queries:
+                await interaction.edit_original_response(content="❌ Không lấy được nhạc từ Spotify.")
+                return
+
+            first = True
+            for q in queries:
+                video_info = await self.get_video_info(q)
+                if not video_info:
+                    continue
+
+                if guild_id not in self.queues:
+                    self.queues[guild_id] = deque()
+                self.queues[guild_id].append(video_info)
+
+                if first:
+                    embed = discord.Embed(
+                        title="🎵 Đang phát từ Spotify",
+                        description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                        color=discord.Color.green(),
+                    )
+                    await interaction.edit_original_response(content="", embed=embed)
+                    if guild_id not in self.now_playing:
+                        await self.play_next(guild_id)
+                    first = False
+            return
+
+        # Nếu không phải Spotify → xử lý như cũ (YouTube)
+        video_info = await self.get_video_info(query)
+        if not video_info:
+            await interaction.edit_original_response(content="❌ Không tìm thấy video.")
+            return
+
+        if guild_id not in self.queues:
+            self.queues[guild_id] = deque()
+        self.queues[guild_id].append(video_info)
+
+        embed = discord.Embed(
+            title="✅ Đã thêm vào hàng đợi",
+            description=f"[{video_info['title']}]({video_info['webpage_url']})",
+            color=discord.Color.blue(),
+        )
+        await interaction.edit_original_response(content="", embed=embed)
+        logger.info(f"✅ Đã thêm: {video_info['title']} vào hàng đợi guild {guild_id}")
+
+        if guild_id not in self.now_playing:
+            await self.play_next(guild_id)
 
     @commands.command(name="queue", aliases=["q"])
     async def queue(self, ctx: commands.Context) -> None:
@@ -280,6 +360,34 @@ class MusicSearch(commands.Cog):
                 inline=False,
             )
         await ctx.send(embed=embed)
+        
+    @app_commands.command(name="queue", description="Hiển thị danh sách hàng đợi")
+    async def slash_queue(self, interaction: discord.Interaction) -> None:
+        """Slash command hiển thị danh sách hàng đợi.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.queues or not self.queues[guild_id]:
+            await interaction.response.send_message("📭 Hàng đợi hiện đang trống.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="📜 Danh sách hàng đợi",
+            description="\n".join(
+                f"{i+1}. [{song['title']}]({song['webpage_url']}) ({song['duration']//60}:{song['duration']%60:02d})"
+                for i, song in enumerate(self.queues[guild_id])
+            ),
+            color=discord.Color.purple(),
+        )
+        if guild_id in self.now_playing:
+            embed.add_field(
+                name="Đang phát",
+                value=f"[{self.now_playing[guild_id]['title']}]({self.now_playing[guild_id]['webpage_url']})",
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed)
 
     @commands.command(name="nowplaying", aliases=["np"])
     async def now_playing(self, ctx: commands.Context) -> None:
@@ -304,6 +412,30 @@ class MusicSearch(commands.Cog):
             color=discord.Color.green(),
         )
         await ctx.send(embed=embed)
+        
+    @app_commands.command(name="nowplaying", description="Hiển thị bài đang phát")
+    async def slash_now_playing(self, interaction: discord.Interaction) -> None:
+        """Slash command hiển thị bài đang phát.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.now_playing:
+            await interaction.response.send_message("📭 Hiện không có bài nào đang phát.", ephemeral=True)
+            return
+
+        song = self.now_playing[guild_id]
+        embed = discord.Embed(
+            title="🎵 Đang phát",
+            description=(
+                f"[{song['title']}]({song['webpage_url']})\n"
+                f"**Người tải lên**: {song['uploader']}\n"
+                f"**Thời lượng**: {song['duration']//60}:{song['duration']%60:02d}"
+            ),
+            color=discord.Color.green(),
+        )
+        await interaction.response.send_message(embed=embed)
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context) -> None:
@@ -319,6 +451,22 @@ class MusicSearch(commands.Cog):
 
         self.voice_clients[guild_id].stop()
         await ctx.send("⏭ Đã bỏ qua bài hiện tại.")
+        logger.info(f"✅ Đã bỏ qua bài trong guild {guild_id}")
+        
+    @app_commands.command(name="skip", description="Bỏ qua bài hiện tại")
+    async def slash_skip(self, interaction: discord.Interaction) -> None:
+        """Slash command bỏ qua bài hiện tại.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.voice_clients or not self.voice_clients[guild_id].is_playing():
+            await interaction.response.send_message("❌ Không có bài nào đang phát.", ephemeral=True)
+            return
+
+        self.voice_clients[guild_id].stop()
+        await interaction.response.send_message("⏭ Đã bỏ qua bài hiện tại.")
         logger.info(f"✅ Đã bỏ qua bài trong guild {guild_id}")
 
     @commands.command(name="pause")
@@ -336,6 +484,22 @@ class MusicSearch(commands.Cog):
         self.voice_clients[guild_id].pause()
         await ctx.send("⏸ Đã tạm dừng nhạc.")
         logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
+        
+    @app_commands.command(name="pause", description="Tạm dừng nhạc")
+    async def slash_pause(self, interaction: discord.Interaction) -> None:
+        """Slash command tạm dừng nhạc.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.voice_clients or not self.voice_clients[guild_id].is_playing():
+            await interaction.response.send_message("❌ Không có bài nào đang phát.", ephemeral=True)
+            return
+
+        self.voice_clients[guild_id].pause()
+        await interaction.response.send_message("⏸ Đã tạm dừng nhạc.")
+        logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
 
     @commands.command(name="resume")
     async def resume(self, ctx: commands.Context) -> None:
@@ -351,6 +515,22 @@ class MusicSearch(commands.Cog):
 
         self.voice_clients[guild_id].resume()
         await ctx.send("▶ Đã tiếp tục phát nhạc.")
+        logger.info(f"✅ Đã tiếp tục nhạc trong guild {guild_id}")
+        
+    @app_commands.command(name="resume", description="Tiếp tục phát nhạc")
+    async def slash_resume(self, interaction: discord.Interaction) -> None:
+        """Slash command tiếp tục phát nhạc.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.voice_clients or not self.voice_clients[guild_id].is_paused():
+            await interaction.response.send_message("❌ Nhạc không bị tạm dừng.", ephemeral=True)
+            return
+
+        self.voice_clients[guild_id].resume()
+        await interaction.response.send_message("▶ Đã tiếp tục phát nhạc.")
         logger.info(f"✅ Đã tiếp tục nhạc trong guild {guild_id}")
 
     @commands.command(name="stop")
@@ -373,6 +553,27 @@ class MusicSearch(commands.Cog):
         self.voice_clients.pop(guild_id)
         await ctx.send("⏹ Đã dừng nhạc và rời voice channel.")
         logger.info(f"✅ Đã dừng nhạc trong guild {guild_id}")
+        
+    @app_commands.command(name="stop", description="Dừng nhạc và xóa hàng đợi")
+    async def slash_stop(self, interaction: discord.Interaction) -> None:
+        """Slash command dừng nhạc và xóa hàng đợi.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.voice_clients:
+            await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
+            return
+
+        if guild_id in self.queues:
+            self.queues[guild_id].clear()
+        self.now_playing.pop(guild_id, None)
+        self.voice_clients[guild_id].stop()
+        await self.voice_clients[guild_id].disconnect()
+        self.voice_clients.pop(guild_id)
+        await interaction.response.send_message("⏹ Đã dừng nhạc và rời voice channel.")
+        logger.info(f"✅ Đã dừng nhạc trong guild {guild_id}")
 
     @commands.command(name="clear")
     async def clear(self, ctx: commands.Context) -> None:
@@ -388,6 +589,22 @@ class MusicSearch(commands.Cog):
 
         self.queues[guild_id].clear()
         await ctx.send("🗑 Đã xóa toàn bộ hàng đợi.")
+        logger.info(f"✅ Đã xóa hàng đợi trong guild {guild_id}")
+        
+    @app_commands.command(name="clear", description="Xóa toàn bộ hàng đợi")
+    async def slash_clear(self, interaction: discord.Interaction) -> None:
+        """Slash command xóa toàn bộ hàng đợi.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.queues or not self.queues[guild_id]:
+            await interaction.response.send_message("📭 Hàng đợi hiện đang trống.", ephemeral=True)
+            return
+
+        self.queues[guild_id].clear()
+        await interaction.response.send_message("🗑 Đã xóa toàn bộ hàng đợi.")
         logger.info(f"✅ Đã xóa hàng đợi trong guild {guild_id}")
 
     @commands.command(name="remove", aliases=["rm"])
@@ -411,6 +628,29 @@ class MusicSearch(commands.Cog):
         self.queues[guild_id].remove(song)
         await ctx.send(f"🗑 Đã xóa: {song['title']}.")
         logger.info(f"✅ Đã xóa bài {song['title']} trong guild {guild_id}")
+        
+    @app_commands.command(name="remove", description="Xóa bài ở vị trí cụ thể trong hàng đợi")
+    @app_commands.describe(index="Vị trí bài cần xóa (bắt đầu từ 1)")
+    async def slash_remove(self, interaction: discord.Interaction, index: int) -> None:
+        """Slash command xóa bài ở vị trí cụ thể trong hàng đợi.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+            index: Vị trí bài cần xóa (bắt đầu từ 1).
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.queues or not self.queues[guild_id]:
+            await interaction.response.send_message("📭 Hàng đợi hiện đang trống.", ephemeral=True)
+            return
+
+        if index < 1 or index > len(self.queues[guild_id]):
+            await interaction.response.send_message("❌ Vị trí không hợp lệ.", ephemeral=True)
+            return
+
+        song = list(self.queues[guild_id])[index - 1]
+        self.queues[guild_id].remove(song)
+        await interaction.response.send_message(f"🗑 Đã xóa: {song['title']}.")
+        logger.info(f"✅ Đã xóa bài {song['title']} trong guild {guild_id}")
 
     @commands.command(name="leave")
     async def leave(self, ctx: commands.Context) -> None:
@@ -430,6 +670,26 @@ class MusicSearch(commands.Cog):
         await self.voice_clients[guild_id].disconnect()
         self.voice_clients.pop(guild_id)
         await ctx.send("👋 Đã rời voice channel.")
+        logger.info(f"✅ Đã rời voice channel trong guild {guild_id}")
+        
+    @app_commands.command(name="leave", description="Rời voice channel")
+    async def slash_leave(self, interaction: discord.Interaction) -> None:
+        """Slash command rời voice channel.
+
+        Args:
+            interaction: Tương tác từ người dùng.
+        """
+        guild_id = interaction.guild.id
+        if guild_id not in self.voice_clients:
+            await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
+            return
+
+        if guild_id in self.queues:
+            self.queues[guild_id].clear()
+        self.now_playing.pop(guild_id, None)
+        await self.voice_clients[guild_id].disconnect()
+        self.voice_clients.pop(guild_id)
+        await interaction.response.send_message("👋 Đã rời voice channel.")
         logger.info(f"✅ Đã rời voice channel trong guild {guild_id}")
 
     async def cog_unload(self) -> None:
