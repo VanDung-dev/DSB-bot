@@ -142,8 +142,8 @@ class Help(commands.Cog):
         embed.add_field(
             name="Lệnh",
             value=(
-                "`/image <từ khóa>` hoặc `/img` - Tìm ảnh từ DuckDuckGo\n"
-                "`!meme <từ khóa>` - Tìm ảnh meme từ DuckDuckGo\n"
+                "`/image <từ khóa> - Tìm ảnh từ DuckDuckGo\n"
+                "`/meme <từ khóa>` - Tìm ảnh meme từ DuckDuckGo\n"
             ),
             inline=False,
         )
@@ -396,12 +396,19 @@ class Help(commands.Cog):
                     await target.response.send_message(embed=embed, view=view)
                     view.message = await target.original_response()
                     return
+            else:
+                # For slash commands, we also want to show the view with buttons
+                view = self.HelpView(self)
+                if isinstance(target, discord.Interaction):
+                    await target.response.send_message(embed=embed, view=view)
+                    view.message = await target.original_response()
+                    return
 
         embed.set_footer(text="DSB Bot - Phát triển bởi VanDung-dev")
         embed.set_thumbnail(
             url=self.bot.user.avatar.url if self.bot.user.avatar else self.bot.user.default_avatar.url
         )
-        
+
         # Gửi một cách thích hợp dựa trên loại mục tiêu
         if isinstance(target, commands.Context):
             await target.send(embed=embed)
