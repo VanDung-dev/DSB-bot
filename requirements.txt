@@ -7,3 +7,4 @@ yt-dlp
 requests
 PyNaCl
 spotipy
+gtts
