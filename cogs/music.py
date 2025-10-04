@@ -290,26 +290,37 @@ class MusicSearch(commands.Cog):
                 await interaction.edit_original_response(content="❌ Không lấy được nhạc từ Spotify.")
                 return
 
+            if guild_id not in self.queues:
+                self.queues[guild_id] = deque()
+
             first = True
             for q in queries:
                 video_info = await self.get_video_info(q)
                 if not video_info:
                     continue
 
-                if guild_id not in self.queues:
-                    self.queues[guild_id] = deque()
                 self.queues[guild_id].append(video_info)
 
                 if first:
-                    embed = discord.Embed(
-                        title="🎵 Đang phát từ Spotify",
-                        description=f"[{video_info['title']}]({video_info['webpage_url']})",
-                        color=discord.Color.green(),
-                    )
-                    await interaction.edit_original_response(content="", embed=embed)
-                    if guild_id not in self.now_playing:
+                    if guild_id in self.now_playing:
+                        # Đang có nhạc -> chỉ thêm vào queue
+                        embed = discord.Embed(
+                            title="✅ Đã thêm từ Spotify vào hàng đợi",
+                            description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                            color=discord.Color.blue(),
+                        )
+                        await interaction.edit_original_response(content="", embed=embed)
+                    else:
+                        # Chưa phát gì -> phát luôn bài đầu tiên
+                        embed = discord.Embed(
+                            title="🎵 Đang phát từ Spotify",
+                            description=f"[{video_info['title']}]({video_info['webpage_url']})",
+                            color=discord.Color.green(),
+                        )
+                        await interaction.edit_original_response(content="", embed=embed)
                         await self.play_next(guild_id)
                     first = False
+
             return
 
         # Nếu không phải Spotify → xử lý như cũ (YouTube)
@@ -477,15 +488,24 @@ class MusicSearch(commands.Cog):
             ctx: Ngữ cảnh lệnh Discord.
         """
         guild_id = ctx.guild.id
-        if guild_id not in self.voice_clients or not self.voice_clients[guild_id].is_playing():
-            await ctx.send("❌ Không có bài nào đang phát.")
+        if guild_id not in self.voice_clients:
+            await ctx.send("❌ Bot không ở trong voice channel.")
             return
 
-        self.voice_clients[guild_id].pause()
-        await ctx.send("⏸ Đã tạm dừng nhạc.")
-        logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
-        
-    @app_commands.command(name="pause", description="Tạm dừng nhạc")
+        vc = self.voice_clients[guild_id]
+
+        if vc.is_playing():
+            vc.pause()
+            await ctx.send("⏸ Đã tạm dừng nhạc.")
+            logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
+        elif vc.is_paused():
+            vc.resume()
+            await ctx.send("▶ Đã tiếp tục phát nhạc.")
+            logger.info(f"✅ Đã tiếp tục nhạc trong guild {guild_id}")
+        else:
+            await ctx.send("❌ Không có nhạc để dừng/tiếp tục.")
+
+    @app_commands.command(name="pause", description="Tạm dừng hoặc tiếp tục nhạc")
     async def slash_pause(self, interaction: discord.Interaction) -> None:
         """Slash command tạm dừng nhạc.
 
@@ -493,13 +513,22 @@ class MusicSearch(commands.Cog):
             interaction: Tương tác từ người dùng.
         """
         guild_id = interaction.guild.id
-        if guild_id not in self.voice_clients or not self.voice_clients[guild_id].is_playing():
-            await interaction.response.send_message("❌ Không có bài nào đang phát.", ephemeral=True)
+        if guild_id not in self.voice_clients:
+            await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
             return
 
-        self.voice_clients[guild_id].pause()
-        await interaction.response.send_message("⏸ Đã tạm dừng nhạc.")
-        logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
+        vc = self.voice_clients[guild_id]
+
+        if vc.is_playing():
+            vc.pause()
+            await interaction.response.send_message("⏸ Đã tạm dừng nhạc.")
+            logger.info(f"✅ Đã tạm dừng nhạc trong guild {guild_id}")
+        elif vc.is_paused():
+            vc.resume()
+            await interaction.response.send_message("▶ Đã tiếp tục phát nhạc.")
+            logger.info(f"✅ Đã tiếp tục nhạc trong guild {guild_id}")
+        else:
+            await interaction.response.send_message("❌ Không có nhạc để dừng/tiếp tục.", ephemeral=True)
 
     @commands.command(name="resume")
     async def resume(self, ctx: commands.Context) -> None:
@@ -553,26 +582,25 @@ class MusicSearch(commands.Cog):
         self.voice_clients.pop(guild_id)
         await ctx.send("⏹ Đã dừng nhạc và rời voice channel.")
         logger.info(f"✅ Đã dừng nhạc trong guild {guild_id}")
-        
+
     @app_commands.command(name="stop", description="Dừng nhạc và xóa hàng đợi")
     async def slash_stop(self, interaction: discord.Interaction) -> None:
-        """Slash command dừng nhạc và xóa hàng đợi.
-
-        Args:
-            interaction: Tương tác từ người dùng.
-        """
         guild_id = interaction.guild.id
         if guild_id not in self.voice_clients:
             await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
             return
 
+        # Trả lời ngay cho Discord
+        await interaction.response.send_message("⏹ Đang dừng nhạc và thoát...")
+
         if guild_id in self.queues:
             self.queues[guild_id].clear()
         self.now_playing.pop(guild_id, None)
+
         self.voice_clients[guild_id].stop()
         await self.voice_clients[guild_id].disconnect()
         self.voice_clients.pop(guild_id)
-        await interaction.response.send_message("⏹ Đã dừng nhạc và rời voice channel.")
+
         logger.info(f"✅ Đã dừng nhạc trong guild {guild_id}")
 
     @commands.command(name="clear")
