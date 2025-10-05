@@ -30,6 +30,19 @@ class Speaking(commands.Cog):
         # Lấy ngôn ngữ mặc định từ biến môi trường, mặc định là tiếng Việt nếu không có
         self.default_language = os.getenv("TTS_DEFAULT_LANGUAGE", "vi")
 
+    # Danh sách ngôn ngữ phổ biến cho autocomplete
+    common_languages = {
+        'en': 'English',
+        'vi': 'Vietnamese',
+        'fr': 'French',
+        'es': 'Spanish',
+        'de': 'German',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'zh-CN': 'Chinese (Simplified)',
+        'ru': 'Russian',
+    }
+
     async def generate_tts_audio(self, text: str, lang: str = None) -> Optional[discord.File]:
         """Tạo audio file từ văn bản sử dụng gTTS.
 
@@ -68,22 +81,23 @@ class Speaking(commands.Cog):
 
     @app_commands.command(name="say", description="Chuyển văn bản thành giọng nói")
     @app_commands.describe(
-        text="Văn bản bạn muốn bot nói",
-        language="Ngôn ngữ (mặc định được cấu hình trong .env)"
+        language="Chọn ngôn ngữ trước",
+        text="Văn bản bạn muốn bot nói"
     )
-    async def say(self, interaction: discord.Interaction, text: str, language: str = None) -> None:
+    @app_commands.choices(language=[
+        app_commands.Choice(name=name, value=code) 
+        for code, name in list(common_languages.items())[:25]
+    ])  # Giới hạn 25 choices do Discord API giới hạn
+    @app_commands.rename(language="language", text="text")
+    async def say(self, interaction: discord.Interaction, language: str, text: str) -> None:
         """Chuyển văn bản thành giọng nói và gửi vào kênh thoại.
 
         Args:
             interaction: Interaction từ người dùng.
+            language: Mã ngôn ngữ được chọn.
             text: Văn bản cần chuyển thành giọng nói.
-            language: Mã ngôn ngữ (mặc định lấy từ cấu hình).
         """
         await interaction.response.defer(thinking=True)
-        
-        # Nếu không có ngôn ngữ được chỉ định, sử dụng ngôn ngữ mặc định
-        if language is None:
-            language = self.default_language
         
         # Kiểm tra xem người dùng có ở trong voice channel không
         if not interaction.user.voice:
@@ -113,7 +127,7 @@ class Speaking(commands.Cog):
             return
         
         # Gửi thông báo đang xử lý
-        await interaction.followup.send(f"🔊 Đang nói: {text}")
+        await interaction.followup.send(f"🔊 Đang nói ({self.common_languages.get(language, language)}): {text}")
         
         # Phát âm thanh trong voice channel
         try:
