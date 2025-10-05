@@ -79,7 +79,6 @@ KEY_DISCORD=<your_discord_bot_token>
 GEMINI_API_KEY=<your_gemini_api_key>
 SPOTIFY_CLIENT_ID=<your_spotify_client_id>
 SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
-TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
 ```
 
 > Có thể sao chép từ `.env.example` nếu có.
@@ -107,7 +106,6 @@ KEY_DISCORD=your_actual_discord_bot_token
 GEMINI_API_KEY=your_actual_gemini_api_key
 SPOTIFY_CLIENT_ID=<your_spotify_client_id>
 SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
-TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
 ```
 
 ### 3. Build và chạy container
@@ -150,7 +148,6 @@ KEY_DISCORD=<your_discord_bot_token>
 GEMINI_API_KEY=<your_gemini_api_key>
 SPOTIFY_CLIENT_ID=<your_spotify_client_id>
 SPOTIFY_CLIENT_SECRET=<your_spotify_client_secret>
-TTS_DEFAULT_LANGUAGE=<mã_ngôn_ngữ_mặc_định> # Mặc định là 'vi' (Tiếng Việt)
 ```
 ### 3. Chạy chương trình
 * Trên Replit: Ấn nút **Run**
