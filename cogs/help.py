@@ -89,8 +89,10 @@ class Help(commands.Cog):
             name="💡 Ghi chú",
             value=(
                 "• Bạn cần ở trong **voice channel** để sử dụng các lệnh nhạc.\n"
-                "• Với album/playlist Spotify: bot sẽ phát ngay bài đầu tiên, "
-                "các bài còn lại được thêm vào hàng đợi im lặng (không spam chat)."
+                "• Với album/playlist Spotify: những bài này không phát từ\n"
+                "Spotify, tôi chỉ lấy tên nhạc để tìm kiếm trên YouTube "
+                "• Nếu không có kết quả tìm kiếm, tôi sẽ phát nhạc có tên tương\n"
+                "tự trên YouTube."
             ),
             inline=False,
         )
