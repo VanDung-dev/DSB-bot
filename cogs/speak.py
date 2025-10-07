@@ -1,6 +1,5 @@
 import logging
 from typing import Optional
-import os
 
 import discord
 from discord.ext import commands
@@ -8,13 +7,9 @@ from discord import app_commands
 import gtts
 import io
 import asyncio
-from dotenv import load_dotenv
 
 # Cấu hình logger
 logger = logging.getLogger(__name__)
-
-# Tải biến môi trường
-load_dotenv()
 
 
 class Speaking(commands.Cog):
@@ -27,8 +22,6 @@ class Speaking(commands.Cog):
             bot: Đối tượng bot Discord.
         """
         self.bot = bot
-        # Lấy ngôn ngữ mặc định từ biến môi trường, mặc định là tiếng Việt nếu không có
-        self.default_language = os.getenv("TTS_DEFAULT_LANGUAGE", "vi")
 
     # Danh sách ngôn ngữ phổ biến cho autocomplete
     common_languages = {
@@ -43,7 +36,8 @@ class Speaking(commands.Cog):
         'ru': 'Russian',
     }
 
-    async def generate_tts_audio(self, text: str, lang: str = None) -> Optional[discord.File]:
+    @staticmethod
+    async def generate_tts_audio(text: str, lang: str = None) -> Optional[discord.File]:
         """Tạo audio file từ văn bản sử dụng gTTS.
 
         Args:
@@ -53,10 +47,6 @@ class Speaking(commands.Cog):
         Returns:
             File âm thanh dưới dạng discord.File hoặc None nếu có lỗi.
         """
-        # Nếu không có ngôn ngữ được chỉ định, sử dụng ngôn ngữ mặc định
-        if lang is None:
-            lang = self.default_language
-            
         try:
             # Sử dụng asyncio để chạy gTTS trong executor tránh blocking
             loop = asyncio.get_event_loop()
@@ -188,7 +178,7 @@ class Speaking(commands.Cog):
                 return
         
         # Tạo audio từ văn bản với ngôn ngữ mặc định
-        audio_file = await self.generate_tts_audio(text, self.default_language)
+        audio_file = await self.generate_tts_audio(text)
         if not audio_file:
             await ctx.send("❌ Không thể tạo âm thanh từ văn bản. Có thể do lỗi kết nối mạng hoặc ngôn ngữ không được hỗ trợ.")
             return
