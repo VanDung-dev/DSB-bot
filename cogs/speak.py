@@ -22,6 +22,7 @@ class Speaking(commands.Cog):
             bot: Đối tượng bot Discord.
         """
         self.bot = bot
+        self.speaking_states: dict = {}
 
     # Danh sách ngôn ngữ phổ biến cho autocomplete
     common_languages = {
@@ -35,6 +36,38 @@ class Speaking(commands.Cog):
         'zh-CN': 'Chinese (Simplified)',
         'ru': 'Russian',
     }
+
+    def get_voice_client(self, guild: discord.Guild) -> Optional[discord.VoiceClient]:
+        """Nhận ứng dụng khách giọng nói từ music cog nếu có."""
+        # Cố gắng lấy máy khách bằng giọng nói từ âm nhạc đầu tiên
+        music_cog = self.bot.get_cog('MusicSearch')
+        if music_cog and guild.id in music_cog.voice_clients:
+            return music_cog.voice_clients[guild.id]
+        
+        # Dự phòng của khách hàng giọng nói của bot
+        return discord.utils.get(self.bot.voice_clients, guild=guild)
+
+    async def connect_to_voice(self, guild: discord.Guild, channel: discord.VoiceChannel) -> Optional[discord.VoiceClient]:
+        """Kết nối với kênh thoại, sử dụng music cog nếu có."""
+        # Kiểm tra xem music cog có quản lý kết nối giọng nói không
+        music_cog = self.bot.get_cog('MusicSearch')
+        if music_cog and guild.id in music_cog.voice_clients:
+            return music_cog.voice_clients[guild.id]
+        
+        # Nếu không thì kết nối bằng phương pháp riêng của chúng tôi
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=guild)
+        if not voice_client:
+            try:
+                voice_client = await channel.connect()
+                # Nếu music cog tồn tại, hãy đăng ký kết nối này với nó
+                if music_cog:
+                    music_cog.voice_clients[guild.id] = voice_client
+            except discord.errors.ClientException:
+                return None
+            except Exception as e:
+                logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
+                return None
+        return voice_client
 
     @staticmethod
     async def generate_tts_audio(text: str, lang: str = None) -> Optional[discord.File]:
@@ -87,37 +120,49 @@ class Speaking(commands.Cog):
             language: Mã ngôn ngữ được chọn.
             text: Văn bản cần chuyển thành giọng nói.
         """
-        await interaction.response.defer(thinking=True)
-        
         # Kiểm tra xem người dùng có ở trong voice channel không
         if not interaction.user.voice:
-            await interaction.followup.send("❌ Bạn cần ở trong voice channel để sử dụng lệnh này.")
+            await interaction.response.send_message("❌ Bạn cần ở trong voice channel để sử dụng lệnh này.", ephemeral=True)
             return
         
         voice_channel = interaction.user.voice.channel
         guild_id = interaction.guild.id
         
+        # Kiểm tra xem bot có đang phát nhạc không
+        music_cog = self.bot.get_cog('MusicSearch')
+        if music_cog:
+            # Nếu có hàng đợi nhạc, từ chối thực hiện nói
+            if guild_id in music_cog.queues and music_cog.queues[guild_id]:
+                await interaction.response.send_message("❌ Không thể nói khi đang phát nhạc có hàng đợi. Hãy dùng /stop hoặc /clear trước.", ephemeral=True)
+                return
+        
+        # Đánh dấu trạng thái nói cho guild này
+        self.speaking_states[guild_id] = True
+        
+        # Trả lời ngay lập tức để tránh timeout
+        await interaction.response.send_message(f"🔊 Đang xử lý yêu cầu nói...", ephemeral=False)
+        
         # Kết nối vào voice channel nếu chưa kết nối
-        voice_client = discord.utils.get(self.bot.voice_clients, guild=interaction.guild)
+        voice_client = self.get_voice_client(interaction.guild)
         if not voice_client:
             try:
-                voice_client = await voice_channel.connect()
-            except discord.errors.ClientException:
-                await interaction.followup.send("❌ Bot đã ở trong voice channel khác.")
-                return
+                voice_client = await self.connect_to_voice(interaction.guild, voice_channel)
+                if not voice_client:
+                    await interaction.edit_original_response(content="❌ Bot đã ở trong voice channel khác.")
+                    del self.speaking_states[guild_id]
+                    return
             except Exception as e:
                 logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
-                await interaction.followup.send("❌ Lỗi khi kết nối voice channel.")
+                await interaction.edit_original_response(content="❌ Lỗi khi kết nối voice channel.")
+                del self.speaking_states[guild_id]
                 return
         
         # Tạo audio từ văn bản
         audio_file = await self.generate_tts_audio(text, language)
         if not audio_file:
-            await interaction.followup.send("❌ Không thể tạo âm thanh từ văn bản. Có thể do lỗi kết nối mạng hoặc ngôn ngữ không được hỗ trợ.")
+            await interaction.edit_original_response(content="❌ Không thể tạo âm thanh từ văn bản. Có thể do lỗi kết nối mạng hoặc ngôn ngữ không được hỗ trợ.")
+            del self.speaking_states[guild_id]
             return
-        
-        # Gửi thông báo đang xử lý
-        await interaction.followup.send(f"🔊 Đang nói ({self.common_languages.get(language, language)}): {text}")
         
         # Phát âm thanh trong voice channel
         try:
@@ -133,11 +178,19 @@ class Speaking(commands.Cog):
             
             # Phát audio
             source = discord.FFmpegPCMAudio(filename)
+            
+            # Chờ bất kỳ âm thanh hiện đang phát hiện đang phát
+            while voice_client.is_playing():
+                await asyncio.sleep(0.5)
+                
             voice_client.play(source)
             
             # Chờ đến khi phát xong
             while voice_client.is_playing():
                 await asyncio.sleep(1)
+            
+            # Cập nhật tin nhắn để thông báo đã nói xong
+            await interaction.edit_original_response(content=f"✅ Đã nói xong ({self.common_languages.get(language, language)}): {text}")
             
             # Xóa file tạm thời
             import os
@@ -146,7 +199,11 @@ class Speaking(commands.Cog):
                 
         except Exception as e:
             logger.error(f"❌ Lỗi khi phát âm thanh: {e}")
-            await interaction.followup.send("❌ Có lỗi xảy ra khi phát âm thanh.")
+            await interaction.edit_original_response(content="❌ Có lỗi xảy ra khi phát âm thanh.")
+        finally:
+            # Xóa trạng thái nói
+            if guild_id in self.speaking_states:
+                del self.speaking_states[guild_id]
 
     @commands.command(name="say", aliases=["speak"])
     async def say_legacy(self, ctx: commands.Context, *, text: str) -> None:
@@ -164,27 +221,41 @@ class Speaking(commands.Cog):
         voice_channel = ctx.author.voice.channel
         guild_id = ctx.guild.id
         
+        # Kiểm tra xem bot có đang phát nhạc không
+        music_cog = self.bot.get_cog('MusicSearch')
+        if music_cog:
+            # Nếu có hàng đợi nhạc, từ chối thực hiện nói
+            if guild_id in music_cog.queues and music_cog.queues[guild_id]:
+                await ctx.send("❌ Không thể nói khi đang phát nhạc có hàng đợi. Hãy dùng !stop hoặc !clear trước.")
+                return
+        
+        # Đánh dấu trạng thái nói cho guild này
+        self.speaking_states[guild_id] = True
+        
+        # Gửi thông báo đang xử lý
+        processing_msg = await ctx.send(f"🔊 Đang xử lý yêu cầu nói...")
+        
         # Kết nối vào voice channel nếu chưa kết nối
-        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+        voice_client = self.get_voice_client(ctx.guild)
         if not voice_client:
             try:
-                voice_client = await voice_channel.connect()
-            except discord.errors.ClientException:
-                await ctx.send("❌ Bot đã ở trong voice channel khác.")
-                return
+                voice_client = await self.connect_to_voice(ctx.guild, voice_channel)
+                if not voice_client:
+                    await processing_msg.edit(content="❌ Bot đã ở trong voice channel khác.")
+                    del self.speaking_states[guild_id]
+                    return
             except Exception as e:
                 logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
-                await ctx.send("❌ Lỗi khi kết nối voice channel.")
+                await processing_msg.edit(content="❌ Lỗi khi kết nối voice channel.")
+                del self.speaking_states[guild_id]
                 return
         
         # Tạo audio từ văn bản với ngôn ngữ mặc định
         audio_file = await self.generate_tts_audio(text)
         if not audio_file:
-            await ctx.send("❌ Không thể tạo âm thanh từ văn bản. Có thể do lỗi kết nối mạng hoặc ngôn ngữ không được hỗ trợ.")
+            await processing_msg.edit(content="❌ Không thể tạo âm thanh từ văn bản. Có thể do lỗi kết nối mạng hoặc ngôn ngữ không được hỗ trợ.")
+            del self.speaking_states[guild_id]
             return
-        
-        # Gửi thông báo đang xử lý
-        await ctx.send(f"🔊 Đang nói: {text}")
         
         # Phát âm thanh trong voice channel
         try:
@@ -200,11 +271,19 @@ class Speaking(commands.Cog):
             
             # Phát audio
             source = discord.FFmpegPCMAudio(filename)
+            
+            # Chờ bất kỳ âm thanh hiện đang phát hiện đang phát
+            while voice_client.is_playing():
+                await asyncio.sleep(0.5)
+                
             voice_client.play(source)
             
             # Chờ đến khi phát xong
             while voice_client.is_playing():
                 await asyncio.sleep(1)
+            
+            # Cập nhật tin nhắn để thông báo đã nói xong
+            await processing_msg.edit(content=f"✅ Đã nói xong: {text}")
             
             # Xóa file tạm thời
             import os
@@ -213,7 +292,11 @@ class Speaking(commands.Cog):
                 
         except Exception as e:
             logger.error(f"❌ Lỗi khi phát âm thanh: {e}")
-            await ctx.send("❌ Có lỗi xảy ra khi phát âm thanh.")
+            await processing_msg.edit(content="❌ Có lỗi xảy ra khi phát âm thanh.")
+        finally:
+            # Xóa trạng thái nói
+            if guild_id in self.speaking_states:
+                del self.speaking_states[guild_id]
 
 
 async def setup(bot: commands.Bot) -> None:

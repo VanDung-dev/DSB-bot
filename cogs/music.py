@@ -44,6 +44,7 @@ class MusicSearch(commands.Cog):
         self.now_playing: Dict[int, dict] = {}
         self.voice_clients: Dict[int, discord.VoiceClient] = {}
         self.ydl_options = self.load_ydl_config()
+        self.inactivity_timers: Dict[int, asyncio.Task] = {}
 
         load_dotenv()
         client_id = os.getenv("SPOTIFY_CLIENT_ID")
@@ -148,6 +149,39 @@ class MusicSearch(commands.Cog):
             logger.error(f"❌ Lỗi khi tải thông tin video: {e}")
             return None
 
+    async def disconnect_after_inactivity(self, guild_id: int, delay: int = 60) -> None:
+        """Ngắt kết nối sau một khoảng thời gian không hoạt động."""
+        await asyncio.sleep(delay)
+        
+        # Kiểm tra nếu vẫn không có hoạt động nào
+        if guild_id in self.queues and len(self.queues[guild_id]) > 0:
+            return  # Có bài hát trong hàng đợi, không ngắt kết nối
+            
+        if guild_id in self.now_playing:
+            return  # Vẫn đang phát nhạc, không ngắt kết nối
+            
+        # Kiểm tra nếu có bot đang nói
+        speaking_cog = self.bot.get_cog('Speaking')
+        if speaking_cog and guild_id in speaking_cog.speaking_states:
+            return  # Bot đang nói, không ngắt kết nối
+            
+        # Ngắt kết nối do không hoạt động
+        if guild_id in self.voice_clients:
+            await self.voice_clients[guild_id].disconnect()
+            self.voice_clients.pop(guild_id)
+            logger.info(f"✅ Đã ngắt kết nối khỏi voice channel do không hoạt động trong guild {guild_id}")
+
+    def reset_inactivity_timer(self, guild_id: int) -> None:
+        """Đặt lại bộ đếm thời gian không hoạt động."""
+        # Hủy bộ đếm thời gian trước đó nếu có
+        if guild_id in self.inactivity_timers:
+            self.inactivity_timers[guild_id].cancel()
+            
+        # Tạo bộ đếm thời gian mới
+        self.inactivity_timers[guild_id] = asyncio.create_task(
+            self.disconnect_after_inactivity(guild_id)
+        )
+
     async def play_next(self, guild_id: int) -> None:
         """Phát bài tiếp theo trong hàng đợi.
 
@@ -156,9 +190,8 @@ class MusicSearch(commands.Cog):
         """
         if guild_id not in self.queues or not self.queues[guild_id]:
             self.now_playing.pop(guild_id, None)
-            if guild_id in self.voice_clients:
-                await self.voice_clients[guild_id].disconnect()
-                self.voice_clients.pop(guild_id)
+            # Đặt bộ đếm thời gian để ngắt kết nối sau 1 phút không hoạt động
+            self.reset_inactivity_timer(guild_id)
             return
 
         song = self.queues[guild_id].popleft()
@@ -166,7 +199,15 @@ class MusicSearch(commands.Cog):
 
         try:
             source = discord.FFmpegPCMAudio(song["url"], **self.FFMPEG_OPTIONS)
-            self.voice_clients[guild_id].play(
+            # Wait for any currently playing audio to finish (like TTS)
+            voice_client = self.voice_clients[guild_id]
+            
+            # Kiểm tra xem bot có đang nói không
+            speaking_cog = self.bot.get_cog('Speaking')
+            while voice_client.is_playing() or (speaking_cog and guild_id in speaking_cog.speaking_states):
+                await asyncio.sleep(0.5)
+                
+            voice_client.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop),
             )
@@ -209,6 +250,17 @@ class MusicSearch(commands.Cog):
                     logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
                     await ctx.send("❌ Lỗi khi kết nối voice channel.")
                     return
+
+            # Hủy bộ đếm thời gian không hoạt động khi có yêu cầu mới
+            if guild_id in self.inactivity_timers:
+                self.inactivity_timers[guild_id].cancel()
+                self.inactivity_timers.pop(guild_id)
+
+            # Kiểm tra xem bot có đang nói không
+            speaking_cog = self.bot.get_cog('Speaking')
+            if speaking_cog and guild_id in speaking_cog.speaking_states:
+                await ctx.send("❌ Bot đang nói, vui lòng đợi nói xong rồi phát nhạc.")
+                return
 
             # Kiểm tra nếu là link Spotify
             if self.is_spotify_url(query):
@@ -300,6 +352,17 @@ class MusicSearch(commands.Cog):
                     logger.error(f"❌ Lỗi khi kết nối voice channel: {e}")
                     await interaction.edit_original_response(content="❌ Lỗi khi kết nối voice channel.")
                     return
+
+            # Hủy bộ đếm thời gian không hoạt động khi có yêu cầu mới
+            if guild_id in self.inactivity_timers:
+                self.inactivity_timers[guild_id].cancel()
+                self.inactivity_timers.pop(guild_id)
+
+            # Kiểm tra xem bot có đang nói không
+            speaking_cog = self.bot.get_cog('Speaking')
+            if speaking_cog and guild_id in speaking_cog.speaking_states:
+                await interaction.edit_original_response(content="❌ Bot đang nói, vui lòng đợi nói xong rồi phát nhạc.")
+                return
 
             # Kiểm tra nếu là link Spotify
             if self.is_spotify_url(query):
@@ -587,6 +650,11 @@ class MusicSearch(commands.Cog):
             await ctx.send("❌ Bot không ở trong voice channel.")
             return
 
+        # Hủy bộ đếm thời gian không hoạt động
+        if guild_id in self.inactivity_timers:
+            self.inactivity_timers[guild_id].cancel()
+            self.inactivity_timers.pop(guild_id)
+
         if guild_id in self.queues:
             self.queues[guild_id].clear()
         self.now_playing.pop(guild_id, None)
@@ -602,6 +670,11 @@ class MusicSearch(commands.Cog):
         if guild_id not in self.voice_clients:
             await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
             return
+
+        # Hủy bộ đếm thời gian không hoạt động
+        if guild_id in self.inactivity_timers:
+            self.inactivity_timers[guild_id].cancel()
+            self.inactivity_timers.pop(guild_id)
 
         # Trả lời ngay cho Discord
         await interaction.response.send_message("⏹ Đang dừng nhạc và thoát...")
@@ -705,6 +778,11 @@ class MusicSearch(commands.Cog):
             await ctx.send("❌ Bot không ở trong voice channel.")
             return
 
+        # Hủy bộ đếm thời gian không hoạt động
+        if guild_id in self.inactivity_timers:
+            self.inactivity_timers[guild_id].cancel()
+            self.inactivity_timers.pop(guild_id)
+
         if guild_id in self.queues:
             self.queues[guild_id].clear()
         self.now_playing.pop(guild_id, None)
@@ -725,6 +803,11 @@ class MusicSearch(commands.Cog):
             await interaction.response.send_message("❌ Bot không ở trong voice channel.", ephemeral=True)
             return
 
+        # Hủy bộ đếm thời gian không hoạt động
+        if guild_id in self.inactivity_timers:
+            self.inactivity_timers[guild_id].cancel()
+            self.inactivity_timers.pop(guild_id)
+
         if guild_id in self.queues:
             self.queues[guild_id].clear()
         self.now_playing.pop(guild_id, None)
@@ -735,6 +818,11 @@ class MusicSearch(commands.Cog):
 
     async def cog_unload(self) -> None:
         """Ngắt kết nối tất cả voice clients khi cog được gỡ."""
+        # Hủy tất cả bộ đếm thời gian không hoạt động
+        for timer in self.inactivity_timers.values():
+            timer.cancel()
+        self.inactivity_timers.clear()
+        
         for voice_client in self.voice_clients.values():
             await voice_client.disconnect()
         self.voice_clients.clear()
