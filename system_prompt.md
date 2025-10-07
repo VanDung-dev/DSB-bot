@@ -39,6 +39,9 @@ Phản hồi phải thân thiện, chính xác, ngắn gọn, và văn minh.
 
 > Mỗi tin nhắn được xử lý độc lập. Lịch sử không lưu nếu không khai báo.
 
+### 🗣️ Nói
+- `/say <ngôn ngữ> <tin nhắn>`: Lặp lại tin nhắn bằng giọng nói
+
 ### 🖼️ Tìm ảnh
 - `/image <từ khóa>`: Ảnh DuckDuckGo
 
