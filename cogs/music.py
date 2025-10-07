@@ -224,15 +224,9 @@ class MusicSearch(commands.Cog):
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop),
             )
-            # Gửi embed vào text channel, không phải voice channel
-            text_channel = None
-            if hasattr(voice_client, "channel") and hasattr(voice_client.channel, "guild"):
-                # Tìm text channel mặc định hoặc channel của command gần nhất
-                for channel in voice_client.channel.guild.text_channels:
-                    if channel.permissions_for(voice_client.guild.me).send_messages:
-                        text_channel = channel
-                        break
-            if text_channel:
+            # Gửi embed vào channel gốc của lệnh, nếu có
+            text_channel = song.get("origin_channel")
+            if text_channel is not None:
                 embed = discord.Embed(
                     title="🎵 Đang phát",
                     description=(
@@ -306,6 +300,8 @@ class MusicSearch(commands.Cog):
 
                     if guild_id not in self.queues:
                         self.queues[guild_id] = deque()
+                    # Lưu channel gốc vào dict bài hát
+                    video_info["origin_channel"] = ctx.channel
                     self.queues[guild_id].append(video_info)
 
                     if first:
@@ -343,6 +339,7 @@ class MusicSearch(commands.Cog):
 
             if guild_id not in self.queues:
                 self.queues[guild_id] = deque()
+            video_info["origin_channel"] = ctx.channel
             self.queues[guild_id].append(video_info)
 
             embed = discord.Embed(
@@ -415,6 +412,8 @@ class MusicSearch(commands.Cog):
 
                     if guild_id not in self.queues:
                         self.queues[guild_id] = deque()
+                    # Lưu channel gốc vào dict bài hát
+                    video_info["origin_channel"] = interaction.channel
                     self.queues[guild_id].append(video_info)
 
                     if first:
@@ -451,6 +450,7 @@ class MusicSearch(commands.Cog):
 
             if guild_id not in self.queues:
                 self.queues[guild_id] = deque()
+            video_info["origin_channel"] = interaction.channel
             self.queues[guild_id].append(video_info)
 
             embed = discord.Embed(
