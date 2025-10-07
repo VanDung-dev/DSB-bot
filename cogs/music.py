@@ -115,19 +115,34 @@ class MusicSearch(commands.Cog):
 
         return queries
 
-    async def get_video_info(self, query: str) -> Optional[dict]:
+    async def get_video_info(self, query: str, use_cookies: bool = False) -> Optional[dict]:
         """Lấy thông tin video từ YouTube.
 
         Args:
             query: URL hoặc từ khóa tìm kiếm.
+            use_cookies: Có sử dụng cookie để xác thực hay không.
 
         Returns:
             Thông tin video (title, url, webpage_url, duration, uploader) hoặc None nếu lỗi.
         """
+        temp_cookies_path = None
+        youtube_cookies = None
         try:
             # ép buộc không simulate
             ydl_opts = self.ydl_options.copy()
             ydl_opts.pop("simulate", None)
+
+            if use_cookies:
+                youtube_cookies = os.getenv("YOUTUBE_COOKIES")
+                if youtube_cookies:
+                    temp_cookies_path = "temp_cookies.txt"
+                    with open(temp_cookies_path, "w", encoding="utf-8") as f:
+                        f.write(youtube_cookies)
+                    ydl_opts["cookiefile"] = temp_cookies_path
+                elif "cookiefile" not in ydl_opts:
+                    cookies_path = Path("cookies.txt")
+                    if cookies_path.exists():
+                        ydl_opts["cookiefile"] = str(cookies_path)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 loop = asyncio.get_event_loop()
@@ -135,7 +150,6 @@ class MusicSearch(commands.Cog):
                 if "entries" in info:
                     info = info["entries"][0]
 
-                # lấy stream URL chuẩn (direct link cho ffmpeg)
                 stream_url = info.get("url")
 
                 return {
@@ -148,6 +162,9 @@ class MusicSearch(commands.Cog):
         except Exception as e:
             logger.error(f"❌ Lỗi khi tải thông tin video: {e}")
             return None
+        finally:
+            if use_cookies and temp_cookies_path and os.path.exists(temp_cookies_path):
+                os.remove(temp_cookies_path)
 
     async def disconnect_after_inactivity(self, guild_id: int, delay: int = 60) -> None:
         """Ngắt kết nối sau một khoảng thời gian không hoạt động."""
@@ -199,28 +216,33 @@ class MusicSearch(commands.Cog):
 
         try:
             source = discord.FFmpegPCMAudio(song["url"], **self.FFMPEG_OPTIONS)
-            # Wait for any currently playing audio to finish (like TTS)
             voice_client = self.voice_clients[guild_id]
-            
-            # Kiểm tra xem bot có đang nói không
             speaking_cog = self.bot.get_cog('Speaking')
             while voice_client.is_playing() or (speaking_cog and guild_id in speaking_cog.speaking_states):
                 await asyncio.sleep(0.5)
-                
             voice_client.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop),
             )
-            embed = discord.Embed(
-                title="🎵 Đang phát",
-                description=(
-                    f"[{song['title']}]({song['webpage_url']})\n"
-                    f"**Người tải lên**: {song['uploader']}\n"
-                    f"**Thời lượng**: {song['duration']//60}:{song['duration']%60:02d}"
-                ),
-                color=discord.Color.green(),
-            )
-            await self.voice_clients[guild_id].channel.send(embed=embed)
+            # Gửi embed vào text channel, không phải voice channel
+            text_channel = None
+            if hasattr(voice_client, "channel") and hasattr(voice_client.channel, "guild"):
+                # Tìm text channel mặc định hoặc channel của command gần nhất
+                for channel in voice_client.channel.guild.text_channels:
+                    if channel.permissions_for(voice_client.guild.me).send_messages:
+                        text_channel = channel
+                        break
+            if text_channel:
+                embed = discord.Embed(
+                    title="🎵 Đang phát",
+                    description=(
+                        f"[{song['title']}]({song['webpage_url']})\n"
+                        f"**Người tải lên**: {song['uploader']}\n"
+                        f"**Thời lượng**: {song['duration']//60}:{song['duration']%60:02d}"
+                    ),
+                    color=discord.Color.green(),
+                )
+                await text_channel.send(embed=embed)
             logger.info(f"✅ Đang phát: {song['title']} trong guild {guild_id}")
         except Exception as e:
             logger.error(f"❌ Lỗi khi phát nhạc: {e}")
@@ -271,7 +293,14 @@ class MusicSearch(commands.Cog):
 
                 first = True
                 for q in queries:
+                    # Lấy thông tin video lần 1 (không dùng cookie)
                     video_info = await self.get_video_info(q)
+
+                    # Nếu không lấy được thông tin, thử lại lần 2 (có dùng cookie)
+                    if not video_info:
+                        logger.warning(f"Không lấy được thông tin video cho '{q}' lần 1, thử lại với cookie...")
+                        video_info = await self.get_video_info(q, use_cookies=True)
+
                     if not video_info:
                         continue
 
@@ -300,9 +329,16 @@ class MusicSearch(commands.Cog):
 
             # Nếu là YouTube hoặc search
             search_msg = await ctx.send(f"🔍 Đang tìm: **{query}**...")
+            # Lấy thông tin video lần 1 (không dùng cookie)
             video_info = await self.get_video_info(query)
+            
+            # Nếu không lấy được thông tin, thử lại lần 2 (có dùng cookie)
             if not video_info:
-                await search_msg.edit(content="❌ Không tìm thấy video.")
+                logger.warning(f"Không lấy được thông tin video cho '{query}' lần 1, thử lại với cookie...")
+                video_info = await self.get_video_info(query, use_cookies=True)
+            
+            if not video_info:
+                await ctx.send(f"❌ Không tìm thấy video cho '{query}'.")
                 return
 
             if guild_id not in self.queues:
@@ -401,9 +437,16 @@ class MusicSearch(commands.Cog):
                 return
 
             # Nếu không phải Spotify → xử lý như cũ (YouTube)
+            # Lấy thông tin video lần 1 (không dùng cookie)
             video_info = await self.get_video_info(query)
+
+            # Nếu không lấy được thông tin, thử lại lần 2 (có dùng cookie)
             if not video_info:
-                await interaction.edit_original_response(content="❌ Không tìm thấy video.")
+                logger.warning(f"Không lấy được thông tin video cho '{query}' lần 1, thử lại với cookie...")
+                video_info = await self.get_video_info(query, use_cookies=True)
+
+            if not video_info:
+                await interaction.edit_original_response(content=f"❌ Không tìm thấy video cho '{query}'.")
                 return
 
             if guild_id not in self.queues:
