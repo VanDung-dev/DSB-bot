@@ -88,7 +88,18 @@ class Moderation(commands.Cog):
                 logger.error(f"❌ Lỗi khi xóa tin nhắn lệnh: {e}")
             return
 
-        if not content.startswith(self.bot.command_prefix):
+        #Kiểm tra nếu tin nhắn là một lệnh (bắt đầu bằng tiền tố lệnh)
+        is_command = False
+        if isinstance(self.bot.command_prefix, str):
+            is_command = content.startswith(self.bot.command_prefix) if self.bot.command_prefix else False
+        elif callable(self.bot.command_prefix):
+            prefixes = self.bot.command_prefix(self.bot, message)
+            if isinstance(prefixes, str):
+                is_command = content.startswith(prefixes)
+            elif isinstance(prefixes, (list, tuple)):
+                is_command = any(content.startswith(prefix) for prefix in prefixes)
+
+        if not is_command:
             for word in self.bad_words:
                 if re.search(rf"\b{re.escape(word)}\b", content, re.IGNORECASE):
                     logger.warning(
