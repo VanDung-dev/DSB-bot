@@ -44,3 +44,6 @@ cookies.txt
 # Local development
 .DS_Store
 Thumbs.db
+
+# Data
+data/
