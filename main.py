@@ -9,6 +9,7 @@ from discord.ext import commands
 from cogs.assistant import Assistant
 from cogs.config import Config, get_config
 from cogs.help import Help
+from cogs.r34 import R34
 
 from slash_setup import initialize_slash_commands
 
@@ -54,6 +55,7 @@ async def setup_cogs() -> None:
     cogs: list[commands.Cog] = [
         Help(bot),
         Assistant(bot),
+        R34(bot),
     ]
     for cog in cogs:
         try:

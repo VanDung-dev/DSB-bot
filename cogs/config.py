@@ -70,6 +70,17 @@ class Config:
     SYSTEM_PROMPT_FILE: str = _env_str("SYSTEM_PROMPT_FILE", "system_prompt.md")
     FALLBACK_SYSTEM_PROMPT: str = _env_str("FALLBACK_SYSTEM_PROMPT", "You are a helpful assistant.")
 
+    # ── R34 ──
+    R34_MAX_RESULTS: int = _env_int("R34_MAX_RESULTS", 1)
+
+    @property
+    def r34_api_key(self) -> str:
+        return os.getenv("R34_API_KEY", "")
+
+    @property
+    def r34_user_id(self) -> str:
+        return os.getenv("R34_USER_ID", "")
+
     # ── Owner ──
     OWNER_ID: int | None = _env_int("OWNER_ID", 0) or None
 
@@ -82,6 +93,8 @@ class Config:
     @property
     def openrouter_api_key(self) -> str:
         return os.getenv("OPENROUTER_API_KEY", "")
+
+
 
     @staticmethod
     def _require(name: str) -> str:

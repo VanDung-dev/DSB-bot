@@ -7,7 +7,13 @@ dependencies = [
     "colorlog",
     "python-dotenv",
     "aiohttp",
+    "rule34py",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dsb-bot*"]
+exclude = ["logs*", "data*", "cogs*"]
 
 [build-system]
 requires = ["setuptools"]
