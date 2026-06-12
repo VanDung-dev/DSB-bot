@@ -1,37 +1,21 @@
-# Use Python 3.11 as base image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc \
-        g++ \
-        ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy requirements file
-COPY requirements.txt .
+COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv export --frozen --no-dev --no-emit-project > /tmp/requirements.txt && \
+    uv pip install --system -r /tmp/requirements.txt
 
-# Copy project files
 COPY . .
 
-# Create a non-root user and switch to it
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app
 
-# Expose port (if your bot ever needs it)
-EXPOSE 8000
-
-# Command to run the bot
 CMD ["python", "main.py"]

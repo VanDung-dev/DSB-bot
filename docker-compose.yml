@@ -1,20 +1,9 @@
-version: '3.8'
-
 services:
   discord-bot:
     build: .
     container_name: dsb-discord-bot
-    environment:
-      - KEY_DISCORD=${KEY_DISCORD}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+    env_file: .env
     volumes:
       - ./logs:/app/logs
+      - ./data:/app/data
     restart: unless-stopped
-    command: python main.py
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
