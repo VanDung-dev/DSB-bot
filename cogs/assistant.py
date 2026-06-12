@@ -1,481 +1,202 @@
-import asyncio
-import logging
-import os
-from typing import Optional
+from pathlib import Path
+from typing import Union
 
+import aiohttp
 import discord
-import google.generativeai as genai
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
 
-# Tải biến môi trường
-load_dotenv()
-
-# Cấu hình logger
-logger = logging.getLogger(__name__)
-
-# Định nghĩa model AI
-AI_MODEL = "gemma-3-27b-it"
+from cogs.base import BaseCog
+from cogs.config import Config, get_config
+from cogs.persistence import HistoryStore, MessageList
 
 
 def load_markdown(filename: str) -> str:
-    """Tải nội dung file markdown từ đường dẫn tương đối.
-
-    Args:
-        filename: Tên file markdown (ví dụ: system_prompt.md).
-
-    Returns:
-        Nội dung của file markdown.
-    """
-    path = os.path.join(os.path.dirname(__file__), "..", filename)
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    return (Path(__file__).resolve().parent.parent / filename).read_text(encoding="utf-8")
 
 
-class Assistant(commands.Cog):
-    """Cog xử lý các lệnh tương tác với AI sử dụng Google Gemini."""
+def _user_id(target: Union[commands.Context, discord.Interaction]) -> int:
+    return target.author.id if isinstance(target, commands.Context) else target.user.id
+
+
+def _user_name(target: Union[commands.Context, discord.Interaction]) -> str:
+    return target.author.name if isinstance(target, commands.Context) else target.user.name
+
+
+class Assistant(BaseCog):
+    """Cog handling AI question-answering via OpenRouter with per-user memory."""
 
     def __init__(self, bot: commands.Bot) -> None:
-        """Khởi tạo cog Assistant.
-
-        Args:
-            bot: Đối tượng bot Discord.
-        """
-        self.bot = bot
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self.model = None
+        super().__init__(bot)
+        self.api_key = get_config().openrouter_api_key
         self.ai_config = {
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "top_k": 40,
-            "max_output_tokens": 800,
+            "temperature": Config.AI_TEMPERATURE,
+            "top_p": Config.AI_TOP_P,
+            "max_tokens": Config.AI_MAX_TOKENS,
+        }
+        self.store = HistoryStore()
+        self._session: aiohttp.ClientSession | None = None
+        self._headers: dict = {}
+        self.openrouter_ok: bool = False
+
+        if self.api_key:
+            self._headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+        else:
+            self.logger.warning("⚠️ OPENROUTER_API_KEY not set. AI features will be disabled.")
+
+    async def _check_openrouter(self) -> None:
+        if not self.api_key:
+            self.openrouter_ok = False
+            return
+
+        payload = {
+            "model": Config.AI_MODEL,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 5,
+        }
+        data = await self._post(payload)
+        if data and data.get("choices"):
+            self.openrouter_ok = True
+            self.logger.info(f"✅ OpenRouter OK — model {Config.AI_MODEL}")
+        else:
+            self.openrouter_ok = False
+            self.logger.error(f"❌ OpenRouter health check FAILED — model {Config.AI_MODEL}")
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        self.logger.info(f"🤖 Cog {self.__class__.__name__} ready, checking OpenRouter...")
+        await self._check_openrouter()
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        session = self._session
+        if session is None or session.closed:
+            session = aiohttp.ClientSession()
+            self._session = session
+        return session
+
+    async def _post(self, payload: dict) -> dict | None:
+        session = await self._get_session()
+        async with session.post(Config.OPENROUTER_API_URL, headers=self._headers, json=payload) as resp:
+            if not resp.ok:
+                text = await resp.text()
+                self.logger.error(f"❌ OpenRouter API error {resp.status}: {text}")
+                return None
+            return await resp.json()
+
+    async def _generate_ai_response(self, message: str, history: MessageList) -> str | None:
+        if not self.api_key:
+            return None
+
+        try:
+            system_prompt = load_markdown(Config.SYSTEM_PROMPT_FILE)
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load {Config.SYSTEM_PROMPT_FILE}: {e}")
+            system_prompt = Config.FALLBACK_SYSTEM_PROMPT
+
+        payload = {
+            "model": Config.AI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                *history,
+                {"role": "user", "content": message},
+            ],
+            **self.ai_config,
         }
 
-        # Thiết lập kết nối với Google Gemini
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-            try:
-                self.model = genai.GenerativeModel(AI_MODEL)
-                logger.info(f"✅ Đã kết nối Gemini AI với model {AI_MODEL}")
-            except Exception as e:
-                logger.error(f"❌ Không thể kết nối Gemini AI: {e}")
-        else:
-            logger.warning("⚠️ GEMINI_API_KEY không được thiết lập. Tính năng AI sẽ không hoạt động.")
+        data = await self._post(payload)
+        if not data:
+            return None
 
-    @commands.command(name="ai", aliases=["chat", "ask"])
-    async def ai_chat(self, ctx: commands.Context, *, message: str) -> None:
-        """Lệnh để trò chuyện với AI Gemini.
-
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-            message: Tin nhắn người dùng gửi tới AI.
-        """
-        logger.info(
-            f"{ctx.author} gọi lệnh !ai trong kênh {ctx.channel} với tin nhắn: "
-            f"'{message[:50]}{'...' if len(message) > 50 else ''}'"
-        )
-
-        if not self.model:
-            await ctx.send("❌ AI không khả dụng. Vui lòng kiểm tra cấu hình GEMINI_API_KEY.")
-            return
-
-        async with ctx.typing():
-            try:
-                # Tạo prompt với system prompt và tin nhắn hiện tại
-                try:
-                    system_prompt = load_markdown("system_prompt.md")
-                    full_conversation = f"{system_prompt}\n\nUser: {message}\nAI: "
-                except Exception as e:
-                    logger.error(f"❌ Không thể tải nội dung file system_prompt.md: {e}")
-                    full_conversation = f"User: {message}\nAI: "
-
-                # Gửi yêu cầu tới Gemini AI
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self.model.generate_content(
-                        full_conversation,
-                        generation_config=genai.types.GenerationConfig(**self.ai_config),
-                    ),
-                )
-
-                if response.text:
-                    ai_response = response.text.strip()
-                    logger.info(
-                        f"✅ AI đã phản hồi thành công cho {ctx.author} "
-                        f"(độ dài phản hồi: {len(ai_response)} ký tự)"
-                    )
-
-                    embed = discord.Embed(
-                        title="🤖 Trợ lý DSB AI",
-                        description=ai_response,
-                        color=0x00FF88,
-                    )
-                    embed.set_footer(text=f"Được yêu cầu bởi {ctx.author.display_name}")
-
-                    # Chia nhỏ tin nhắn nếu quá dài
-                    if len(ai_response) > 2000:
-                        chunks = [ai_response[i : i + 1900] for i in range(0, len(ai_response), 1900)]
-                        for i, chunk in enumerate(chunks):
-                            if i == 0:
-                                embed.description = chunk
-                                await ctx.send(embed=embed)
-                            else:
-                                await ctx.send(f"```{chunk}```")
-                    else:
-                        await ctx.send(embed=embed)
-                else:
-                    await ctx.send("❌ AI không thể tạo phản hồi. Vui lòng thử lại.")
-            except Exception as e:
-                logger.error(f"❌ Lỗi AI chat: {str(e)}")
-                error_msg = str(e).lower()
-                if "404" in error_msg and "model" in error_msg:
-                    await ctx.send("❌ Model AI không khả dụng. Vui lòng kiểm tra API key hoặc thử lại sau.")
-                elif "quota" in error_msg or "limit" in error_msg:
-                    await ctx.send("❌ Đã đạt giới hạn API. Vui lòng thử lại sau.")
-                elif "api key" in error_msg:
-                    await ctx.send("❌ API key không hợp lệ. Vui lòng kiểm tra cấu hình.")
-                else:
-                    await ctx.send("❌ Lỗi AI: Không thể xử lý yêu cầu. Vui lòng thử lại sau.")
-                    
-    @app_commands.command(name="ai", description="Trò chuyện với AI Gemini")
-    @app_commands.describe(message="Tin nhắn bạn muốn gửi tới AI")
-    async def slash_ai_chat(self, interaction: discord.Interaction, message: str) -> None:
-        """Slash command để trò chuyện với AI Gemini.
-
-        Args:
-            interaction: Tương tác từ người dùng.
-            message: Tin nhắn người dùng gửi tới AI.
-        """
-        logger.info(
-            f"{interaction.user} gọi slash command /ai trong kênh {interaction.channel} với tin nhắn: "
-            f"'{message[:50]}{'...' if len(message) > 50 else ''}'"
-        )
-
-        if not self.model:
-            await interaction.response.send_message("❌ AI không khả dụng. Vui lòng kiểm tra cấu hình GEMINI_API_KEY.", ephemeral=True)
-            return
-
-        await interaction.response.send_message("🤖 Đang xử lý yêu cầu của bạn...", ephemeral=False)
-        
         try:
-            # Tạo prompt với system prompt và tin nhắn hiện tại
-            try:
-                system_prompt = load_markdown("system_prompt.md")
-                full_conversation = f"{system_prompt}\n\nUser: {message}\nAI: "
-            except Exception as e:
-                logger.error(f"❌ Không thể tải nội dung file system_prompt.md: {e}")
-                full_conversation = f"User: {message}\nAI: "
+            return data["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError):
+            self.logger.error(f"❌ OpenRouter response format unexpected: {data}")
+            return None
 
-            # Gửi yêu cầu tới Gemini AI
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.model.generate_content(
-                    full_conversation,
-                    generation_config=genai.types.GenerationConfig(**self.ai_config),
-                ),
-            )
-
-            if response.text:
-                ai_response = response.text.strip()
-                logger.info(
-                    f"✅ AI đã phản hồi thành công cho {interaction.user} "
-                    f"(độ dài phản hồi: {len(ai_response)} ký tự)"
-                )
-
-                embed = discord.Embed(
-                    title="🤖 Trợ lý DSB AI",
-                    description=ai_response,
-                    color=0x00FF88,
-                )
-                embed.set_footer(text=f"Được yêu cầu bởi {interaction.user.display_name}")
-
-                # Chia nhỏ tin nhắn nếu quá dài
-                if len(ai_response) > 2000:
-                    chunks = [ai_response[i : i + 1900] for i in range(0, len(ai_response), 1900)]
-                    # Send first chunk as edit to the original response
-                    embed.description = chunks[0]
-                    await interaction.edit_original_response(content="", embed=embed)
-                    
-                    # Send remaining chunks as followups
-                    for chunk in chunks[1:]:
-                        await interaction.followup.send(f"```{chunk}```")
-                else:
-                    await interaction.edit_original_response(content="", embed=embed)
-            else:
-                await interaction.edit_original_response(content="❌ AI không thể tạo phản hồi. Vui lòng thử lại.")
-        except Exception as e:
-            logger.error(f"❌ Lỗi AI chat: {str(e)}")
-            error_msg = str(e).lower()
-            if "404" in error_msg and "model" in error_msg:
-                await interaction.edit_original_response(content="❌ Model AI không khả dụng. Vui lòng kiểm tra API key hoặc thử lại sau.")
-            elif "quota" in error_msg or "limit" in error_msg:
-                await interaction.edit_original_response(content="❌ Đã đạt giới hạn API. Vui lòng thử lại sau.")
-            elif "api key" in error_msg:
-                await interaction.edit_original_response(content="❌ API key không hợp lệ. Vui lòng kiểm tra cấu hình.")
-            else:
-                await interaction.edit_original_response(content="❌ Lỗi AI: Không thể xử lý yêu cầu. Vui lòng thử lại sau.")
-
-    @commands.command(name="aiconfig")
-    @commands.has_permissions(administrator=True)
-    async def ai_config_command(self, ctx: commands.Context, setting: Optional[str] = None, value: Optional[str] = None) -> None:
-        """Cấu hình tham số AI (chỉ dành cho admin).
-
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-            setting: Tên tham số cần cấu hình (temperature, top_p, top_k, max_output_tokens).
-            value: Giá trị mới cho tham số.
-        """
-        logger.info(
-            f"{ctx.author} (ADMIN) gọi lệnh !aiconfig trong kênh {ctx.channel} "
-            f"với setting: {setting}, value: {value}"
-        )
-
-        if not setting:
-            embed = discord.Embed(title="⚙️ Cấu hình AI hiện tại", color=0x0099FF)
-            for key, val in self.ai_config.items():
-                embed.add_field(name=key, value=val, inline=True)
-            await ctx.send(embed=embed)
-            return
-
-        if setting in self.ai_config and value:
-            try:
-                if setting in ["temperature", "top_p"]:
-                    self.ai_config[setting] = float(value)
-                elif setting in ["top_k", "max_output_tokens"]:
-                    self.ai_config[setting] = int(value)
-                logger.info(f"⚙️ {ctx.author} đã cập nhật AI config: {setting} = {self.ai_config[setting]}")
-                await ctx.send(f"✅ Đã cập nhật {setting} = {self.ai_config[setting]}")
-            except ValueError:
-                await ctx.send("❌ Giá trị không hợp lệ.")
+    async def _handle_ai_error(self, target, error: Exception) -> None:
+        self.logger.error(f"❌ AI question error: {str(error)}")
+        error_msg = str(error).lower()
+        if "401" in error_msg or "unauthorized" in error_msg or "api key" in error_msg:
+            await self.reply(target, "❌ Invalid API key. Please check your OPENROUTER_API_KEY configuration.")
+        elif "402" in error_msg or "insufficient" in error_msg or "quota" in error_msg:
+            await self.reply(target, "❌ API quota exceeded or insufficient balance. Please try again later.")
+        elif "429" in error_msg or "rate limit" in error_msg:
+            await self.reply(target, "❌ Rate limit exceeded. Please try again later.")
         else:
-            await ctx.send("❌ Tham số không hợp lệ.")
-            
-    @app_commands.command(name="aiconfig", description="Cấu hình tham số AI (chỉ dành cho admin)")
-    @app_commands.describe(
-        setting="Tên tham số cần cấu hình (temperature, top_p, top_k, max_output_tokens)",
-        value="Giá trị mới cho tham số"
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def slash_ai_config_command(self, interaction: discord.Interaction, setting: Optional[str] = None, value: Optional[str] = None) -> None:
-        """Slash command cấu hình tham số AI (chỉ dành cho admin).
+            await self.reply(target, "❌ AI error: Unable to process your request. Please try again later.")
 
-        Args:
-            interaction: Tương tác từ người dùng.
-            setting: Tên tham số cần cấu hình (temperature, top_p, top_k, max_output_tokens).
-            value: Giá trị mới cho tham số.
-        """
-        logger.info(
-            f"{interaction.user} (ADMIN) gọi slash command /aiconfig trong kênh {interaction.channel} "
-            f"với setting: {setting}, value: {value}"
-        )
-
-        if not setting:
-            embed = discord.Embed(title="⚙️ Cấu hình AI hiện tại", color=0x0099FF)
-            for key, val in self.ai_config.items():
-                embed.add_field(name=key, value=val, inline=True)
-            await interaction.response.send_message(embed=embed)
-            return
-
-        if setting in self.ai_config and value:
-            try:
-                if setting in ["temperature", "top_p"]:
-                    self.ai_config[setting] = float(value)
-                elif setting in ["top_k", "max_output_tokens"]:
-                    self.ai_config[setting] = int(value)
-                logger.info(f"⚙️ {interaction.user} đã cập nhật AI config: {setting} = {self.ai_config[setting]}")
-                await interaction.response.send_message(f"✅ Đã cập nhật {setting} = {self.ai_config[setting]}")
-            except ValueError:
-                await interaction.response.send_message("❌ Giá trị không hợp lệ.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Tham số không hợp lệ.", ephemeral=True)
-
-    @commands.command(name="aihelp")
-    async def ai_help(self, ctx: commands.Context) -> None:
-        """Hiển thị hướng dẫn sử dụng các lệnh AI.
-
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-        """
-        logger.info(f"{ctx.author} gọi lệnh !aihelp trong kênh {ctx.channel}")
-        embed = discord.Embed(
-            title="🤖 Hướng dẫn sử dụng AI",
-            description="DSB AI sử dụng Google Gemini để trò chuyện thông minh.",
-            color=0x00FF88,
-        )
-        embed.add_field(
-            name="📝 Lệnh cơ bản",
-            value=(
-                "`!ai <tin nhắn>` - Chat với AI\n"
-                "`!chat <tin nhắn>` - Alias của !ai\n"
-                "`!ask <câu hỏi>` - Alias của !ai\n"
-                "`!aihelp` - Hiển thị hướng dẫn này\n"
-                "`!aistatus` - Kiểm tra trạng thái AI\n"
-                "`!aiconfig [setting] [value]` - Cấu hình AI (chỉ admin)"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="💡 Ví dụ sử dụng",
-            value=(
-                "`!ai Xin chào, bạn có thể làm gì?`\n"
-                "`!ask Python là gì?`\n"
-                "`!chat Hãy giải thích về Discord bot`"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="🔧 Tính năng",
-            value=(
-                "• Trả lời bằng tiếng Việt hoặc tiếng Anh\n"
-                "• Hỗ trợ câu hỏi đa dạng\n"
-                "• Tự động chia tin nhắn dài\n"
-                "• Cấu hình linh hoạt cho admin"
-            ),
-            inline=False,
-        )
-        await ctx.send(embed=embed)
-        
-    @app_commands.command(name="aihelp", description="Hiển thị hướng dẫn sử dụng các lệnh AI")
-    async def slash_ai_help(self, interaction: discord.Interaction) -> None:
-        """Slash command hiển thị hướng dẫn sử dụng các lệnh AI.
-
-        Args:
-            interaction: Tương tác từ người dùng.
-        """
-        logger.info(f"{interaction.user} gọi slash command /aihelp trong kênh {interaction.channel}")
-        embed = discord.Embed(
-            title="🤖 Hướng dẫn sử dụng AI",
-            description="DSB AI sử dụng Google Gemini để trò chuyện thông minh.",
-            color=0x00FF88,
-        )
-        embed.add_field(
-            name="📝 Lệnh cơ bản",
-            value=(
-                "`/ai <tin nhắn>` - Chat với AI\n"
-                "`/chat <tin nhắn>` - Alias của /ai\n"
-                "`/ask <câu hỏi>` - Alias của /ai\n"
-                "`/aihelp` - Hiển thị hướng dẫn này\n"
-                "`/aistatus` - Kiểm tra trạng thái AI\n"
-                "`/aiconfig [setting] [value]` - Cấu hình AI (chỉ admin)"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="💡 Ví dụ sử dụng",
-            value=(
-                "`/ai Xin chào, bạn có thể làm gì?`\n"
-                "`/ask Python là gì?`\n"
-                "`/chat Hãy giải thích về Discord bot`"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="🔧 Tính năng",
-            value=(
-                "• Trả lời bằng tiếng Việt hoặc tiếng Anh\n"
-                "• Hỗ trợ câu hỏi đa dạng\n"
-                "• Tự động chia tin nhắn dài\n"
-                "• Cấu hình linh hoạt cho admin"
-            ),
-            inline=False,
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @commands.command(name="aistatus")
-    async def ai_status(self, ctx: commands.Context) -> None:
-        """Kiểm tra trạng thái hoạt động của AI.
-
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-        """
-        logger.info(f"{ctx.author} gọi lệnh !aistatus trong kênh {ctx.channel}")
+    async def _handle_question(
+        self,
+        target: Union[commands.Context, discord.Interaction],
+        message: str,
+    ) -> None:
         if not self.api_key:
-            await ctx.send("❌ GEMINI_API_KEY chưa được cấu hình.")
+            await self.reply(target, "❌ AI unavailable. Please check your OPENROUTER_API_KEY configuration.")
             return
 
-        if not self.model:
-            await ctx.send("❌ AI model chưa được khởi tạo.")
-            return
+        user_id = _user_id(target)
+
+        self.logger.info(
+            f"User {user_id} asked: '{message[:50]}{'...' if len(message) > 50 else ''}'"
+        )
+
+        if isinstance(target, discord.Interaction):
+            await target.response.defer()
+            send = target.followup.send
+        else:
+            send = target.send
+
+        history = self.store.load_history(user_id)
 
         try:
-            test_response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.model.generate_content(
-                    "Hello",
-                    generation_config=genai.types.GenerationConfig(max_output_tokens=10),
-                ),
-            )
-            if test_response.text:
-                embed = discord.Embed(
-                    title="✅ AI Status",
-                    description="Gemini AI đang hoạt động bình thường",
-                    color=0x00FF88,
-                )
-                embed.add_field(name="Model", value=AI_MODEL, inline=True)
-                embed.add_field(name="API Key", value="✅ Đã cấu hình", inline=True)
-                await ctx.send(embed=embed)
+            if isinstance(target, discord.Interaction):
+                reply = await self._generate_ai_response(message, history)
             else:
-                await ctx.send("⚠️ AI có thể hoạt động nhưng không trả về phản hồi.")
+                async with target.channel.typing():
+                    reply = await self._generate_ai_response(message, history)
         except Exception as e:
-            await ctx.send(f"❌ AI không hoạt động: {str(e)}")
-            
-    @app_commands.command(name="aistatus", description="Kiểm tra trạng thái hoạt động của AI")
-    async def slash_ai_status(self, interaction: discord.Interaction) -> None:
-        """Slash command kiểm tra trạng thái hoạt động của AI.
-
-        Args:
-            interaction: Tương tác từ người dùng.
-        """
-        logger.info(f"{interaction.user} gọi slash command /aistatus trong kênh {interaction.channel}")
-        if not self.api_key:
-            await interaction.response.send_message("❌ GEMINI_API_KEY chưa được cấu hình.", ephemeral=True)
+            await self._handle_ai_error(target, e)
             return
 
-        if not self.model:
-            await interaction.response.send_message("❌ AI model chưa được khởi tạo.", ephemeral=True)
+        if reply is None:
+            await self.reply(target, "❌ AI could not generate a response. Please try again later.")
             return
 
-        try:
-            test_response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.model.generate_content(
-                    "Hello",
-                    generation_config=genai.types.GenerationConfig(max_output_tokens=10),
-                ),
-            )
-            if test_response.text:
-                embed = discord.Embed(
-                    title="✅ AI Status",
-                    description="Gemini AI đang hoạt động bình thường",
-                    color=0x00FF88,
-                )
-                embed.add_field(name="Model", value=AI_MODEL, inline=True)
-                embed.add_field(name="API Key", value="✅ Đã cấu hình", inline=True)
-                await interaction.response.send_message(embed=embed)
-            else:
-                await interaction.response.send_message("⚠️ AI có thể hoạt động nhưng không trả về phản hồi.", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ AI không hoạt động: {str(e)}", ephemeral=True)
+        self.store.save_turn(user_id, _user_name(target), message, reply)
 
-    @ai_config_command.error
-    async def ai_config_error(self, ctx: commands.Context, error: Exception) -> None:
-        """Xử lý lỗi cho lệnh aiconfig.
+        self.logger.info(f"✅ AI responded to user {user_id} (length: {len(reply)} chars)")
+        embed = self.embed(
+            description=f"{reply}",
+            color=discord.Color(Config.EMBED_COLOR),
+        )
 
-        Args:
-            ctx: Ngữ cảnh lệnh Discord.
-            error: Lỗi được ném ra.
-        """
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ Bạn cần quyền Administrator để sử dụng lệnh này.")
-            
-    @slash_ai_config_command.error
-    async def slash_ai_config_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        """Xử lý lỗi cho slash command aiconfig.
+        if len(reply) > 2000:
+            chunks = self.chunk_text(reply)
+            embed.description = chunks[0]
+            await send(embed=embed)
+            for chunk in chunks[1:]:
+                await send(f"```{chunk}```")
+        else:
+            await send(embed=embed)
 
-        Args:
-            interaction: Tương tác từ người dùng.
-            error: Lỗi được ném ra.
-        """
-        if isinstance(error, app_commands.MissingPermissions):
-            await interaction.response.send_message("❌ Bạn cần quyền Administrator để sử dụng lệnh này.", ephemeral=True)
+    @commands.command(name="question", aliases=["q"])
+    async def question_command(self, ctx: commands.Context, *, message: str) -> None:
+        await self._handle_question(ctx, message)
+
+    @app_commands.command(name="question", description="Ask the AI a question")
+    @app_commands.describe(message="Your question for the AI")
+    async def slash_question(self, interaction: discord.Interaction, message: str) -> None:
+        await self._handle_question(interaction, message)
+
+    @commands.command(name="forget")
+    async def forget_command(self, ctx: commands.Context) -> None:
+        self.store.clear_history(_user_id(ctx))
+        await ctx.send("✅ Conversation memory cleared.")
+
+    @app_commands.command(name="forget", description="Clear your conversation history with the AI")
+    async def slash_forget(self, interaction: discord.Interaction) -> None:
+        self.store.clear_history(_user_id(interaction))
+        await interaction.response.send_message("✅ Conversation memory cleared.")
