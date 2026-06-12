@@ -199,6 +199,33 @@ class Assistant(BaseCog):
     async def slash_question(self, interaction: discord.Interaction, message: str) -> None:
         await self._handle_question(interaction, message)
 
+    @commands.command(name="leave")
+    async def leave_command(self, ctx: commands.Context, guild_id: int | None = None) -> None:
+        owner_id = get_config().OWNER_ID
+        if owner_id and ctx.author.id != owner_id:
+            await ctx.send("❌ You are not the owner.")
+            return
+        guild = self.bot.get_guild(guild_id) if guild_id else ctx.guild
+        if not guild:
+            await ctx.send("❌ Server not found.")
+            return
+        await ctx.send(f"👋 Leaving **{guild.name}**...")
+        await guild.leave()
+
+    @app_commands.command(name="leave", description="Kick bot out of the server")
+    @app_commands.describe(guild_id="Server ID to leave (optional, defaults to current)")
+    async def slash_leave(self, interaction: discord.Interaction, guild_id: str | None = None) -> None:
+        owner_id = get_config().OWNER_ID
+        if owner_id and interaction.user.id != owner_id:
+            await interaction.response.send_message("❌ You are not the owner.")
+            return
+        guild = self.bot.get_guild(int(guild_id)) if guild_id else interaction.guild
+        if not guild:
+            await interaction.response.send_message("❌ Server not found.")
+            return
+        await interaction.response.send_message(f"👋 Leaving **{guild.name}**...")
+        await guild.leave()
+
     @commands.command(name="forget")
     async def forget_command(self, ctx: commands.Context) -> None:
         self.store.clear_history(_user_id(ctx))

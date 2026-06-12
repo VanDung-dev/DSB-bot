@@ -42,6 +42,13 @@ async def on_ready() -> None:
     logger.info("✅ Slash commands initialized")
 
 
+@bot.event
+async def on_command_error(ctx, error) -> None:
+    if isinstance(error, commands.CommandNotFound):
+        return
+    raise error
+
+
 async def setup_cogs() -> None:
     """Register all cogs with the bot."""
     cogs: list[commands.Cog] = [

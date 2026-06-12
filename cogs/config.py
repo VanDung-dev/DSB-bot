@@ -36,7 +36,7 @@ def _env_color(key: str, default: int) -> int:
 class Config:
     # ── Bot ──
     BOT_NAME: str = _env_str("BOT_NAME", "DSB Bot")
-    COMMAND_PREFIX: str = _env_str("COMMAND_PREFIX", "")
+    COMMAND_PREFIX: str = _env_str("COMMAND_PREFIX", "!")
 
     # ── Logging ──
     LOG_FORMAT: str = "%(log_color)s[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
@@ -69,6 +69,9 @@ class Config:
     AI_RETRY_DELAY: float = _env_float("AI_RETRY_DELAY", 2.0)
     SYSTEM_PROMPT_FILE: str = _env_str("SYSTEM_PROMPT_FILE", "system_prompt.md")
     FALLBACK_SYSTEM_PROMPT: str = _env_str("FALLBACK_SYSTEM_PROMPT", "You are a helpful assistant.")
+
+    # ── Owner ──
+    OWNER_ID: int | None = _env_int("OWNER_ID", 0) or None
 
     # ── Required env-based ──
 
