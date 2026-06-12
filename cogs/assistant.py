@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Union
 
+import asyncio
+
 import aiohttp
 import discord
 from discord.ext import commands
@@ -106,15 +108,21 @@ class Assistant(BaseCog):
             **self.ai_config,
         }
 
-        data = await self._post(payload)
-        if not data:
-            return None
+        for attempt in range(1, Config.AI_MAX_RETRIES + 1):
+            data = await self._post(payload)
+            if data:
+                try:
+                    content = data["choices"][0]["message"]["content"].strip()
+                    if content:
+                        return content
+                except (KeyError, IndexError):
+                    self.logger.error(f"❌ OpenRouter response format unexpected: {data}")
 
-        try:
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError):
-            self.logger.error(f"❌ OpenRouter response format unexpected: {data}")
-            return None
+            if attempt < Config.AI_MAX_RETRIES:
+                self.logger.warning(f"⏳ Retry {attempt}/{Config.AI_MAX_RETRIES} in {Config.AI_RETRY_DELAY}s...")
+                await asyncio.sleep(Config.AI_RETRY_DELAY)
+
+        return None
 
     async def _handle_ai_error(self, target, error: Exception) -> None:
         self.logger.error(f"❌ AI question error: {str(error)}")

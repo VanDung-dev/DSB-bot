@@ -65,6 +65,8 @@ class Config:
     AI_TEMPERATURE: float = _env_float("AI_TEMPERATURE", 0.7)
     AI_TOP_P: float = _env_float("AI_TOP_P", 0.8)
     AI_MAX_TOKENS: int = _env_int("AI_MAX_TOKENS", 128000)
+    AI_MAX_RETRIES: int = _env_int("AI_MAX_RETRIES", 3)
+    AI_RETRY_DELAY: float = _env_float("AI_RETRY_DELAY", 2.0)
     SYSTEM_PROMPT_FILE: str = _env_str("SYSTEM_PROMPT_FILE", "system_prompt.md")
     FALLBACK_SYSTEM_PROMPT: str = _env_str("FALLBACK_SYSTEM_PROMPT", "You are a helpful assistant.")
 
